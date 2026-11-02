@@ -1,3 +1,5 @@
+import time
+
 from PySide6.QtCore import (
     QPoint,
     QRect,
@@ -23,6 +25,7 @@ from luma.editor.tools import FREEHAND_TOOLS, TEXT_PIXELS, TOOLS
 from luma.preferences import preferences
 from luma.saving import open_save_folder
 from luma.system.keyboard import force_foreground, is_ctrl_down
+from luma.ui.cursors import crosshair_cursor
 from luma.ui.icons import glyph_icon
 from luma.ui.theme import MENU_STYLE
 
@@ -32,7 +35,7 @@ LOUPE_OFFSET = 26
 LOUPE_LABEL_WIDTH = 360
 SELECTION_BAND = 14
 SELECTION_LABEL_BAND = 44
-CROSSHAIR_COLOR = QColor(255, 255, 255, 90)
+IMMEDIATE_REPAINT_INTERVAL = 0.005
 HINT_TEXT = (
     "Drag to select   |   Double-click: whole screen   |   "
     "Hold Ctrl: magnifier, Ctrl+C: copy color   |   Right-click: menu   |   Esc: cancel"
@@ -55,6 +58,8 @@ TOOLBAR_GAP = 8
 LABEL_PADDING = 6
 LABEL_FONT_PIXELS = 12
 SETTINGS_ICON_SIZE = 18
+CROSSHAIR = "crosshair"
+
 ARROW_KEY_DIRECTIONS = {
     Qt.Key_Left: QPoint(-1, 0),
     Qt.Key_Right: QPoint(1, 0),
@@ -86,7 +91,9 @@ class Overlay(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground)
         self.setAttribute(Qt.WA_OpaquePaintEvent)
         self.setMouseTracking(True)
-        self.setCursor(Qt.CrossCursor)
+        self.crosshair = crosshair_cursor()
+        self.cursor_key = CROSSHAIR
+        self.setCursor(self.crosshair)
         self.setScreen(screen)
         self.setGeometry(screen.geometry())
         self.ratio = self.source.width() / screen.geometry().width()
@@ -105,6 +112,7 @@ class Overlay(QWidget):
         self.current = None
         self.typing = None
         self.stats = InteractionStats()
+        self.last_paint = 0.0
         self.snap_timer = QTimer(self)
         self.snap_timer.setSingleShot(True)
         self.snap_timer.setInterval(SNAP_HOLD_MS)
@@ -161,16 +169,20 @@ class Overlay(QWidget):
         return scaled.toAlignedRect().adjusted(-1, -1, 1, 1)
 
     def invalidate(self, *rects):
-        """Repaint only these physical-pixel rectangles instead of the whole screen."""
-        for rect in rects:
-            self.update(self.widget_rect(rect))
+        """Repaint these physical-pixel rectangles now, or on the next loop if one just happened.
 
-    def crosshair_rects(self, point):
-        half = round(self.ratio) + 1
-        return [
-            QRect(0, point.y() - half, self.bounds.width(), 2 * half + 1),
-            QRect(point.x() - half, 0, 2 * half + 1, self.bounds.height()),
-        ]
+        Painting right inside the mouse handler skips the event queue, which keeps the drawing as
+        close as possible to the cursor; the interval stops a fast mouse from painting every event.
+        """
+        region = QRegion()
+        for rect in rects:
+            region = region.united(self.widget_rect(rect))
+        if region.isEmpty():
+            return
+        if time.perf_counter() - self.last_paint >= IMMEDIATE_REPAINT_INTERVAL:
+            self.repaint(region)
+        else:
+            self.update(region)
 
     def loupe_geometry(self, point):
         cell = LOUPE_CELL * self.ratio
@@ -198,7 +210,7 @@ class Overlay(QWidget):
     def hover_dirty_rects(self, point):
         if point is None:
             return []
-        rects = [] if self.selection else self.crosshair_rects(point)
+        rects = []
         if is_ctrl_down():
             rects.append(self.loupe_rect(point))
         return rects
@@ -250,7 +262,7 @@ class Overlay(QWidget):
         self.current = None
         self.typing = None
         self.toolbar.hide()
-        self.setCursor(Qt.CrossCursor)
+        self.set_cursor_key(CROSSHAIR)
         self.update()
 
     def select_all(self):
@@ -450,13 +462,18 @@ class Overlay(QWidget):
 
     def update_cursor(self, target):
         if target == "move":
-            shape = Qt.CrossCursor if self.tool else Qt.SizeAllCursor
+            key = CROSSHAIR if self.tool else Qt.SizeAllCursor
         elif target:
-            shape = CURSOR_BY_EDGES[target]
+            key = CURSOR_BY_EDGES[target]
         else:
-            shape = Qt.CrossCursor
-        if shape != self.cursor().shape():
-            self.setCursor(shape)
+            key = CROSSHAIR
+        self.set_cursor_key(key)
+
+    def set_cursor_key(self, key):
+        if key == self.cursor_key:
+            return
+        self.cursor_key = key
+        self.setCursor(self.crosshair if key == CROSSHAIR else key)
 
     def place_toolbar(self):
         rect = QRectF(self.selection)
@@ -542,12 +559,12 @@ class Overlay(QWidget):
         if self.selection:
             self.paint_selection(painter)
         else:
-            self.paint_crosshair(painter)
             self.paint_hint(painter)
         if self.is_picking() and is_ctrl_down():
             self.paint_loupe(painter)
         painter.end()
         self.stats.painted(started)
+        self.last_paint = time.perf_counter()
 
     def paint_bright_selection(self, painter):
         """Show the undimmed screen inside the selection, with a native 1:1 pixel copy."""
@@ -572,13 +589,6 @@ class Overlay(QWidget):
         painter.drawRect(rect.adjusted(0, 0, -1, -1))
         self.paint_handles(painter, rect)
         self.paint_pill(painter, f"{rect.width()} x {rect.height()}", rect.left(), rect.top(), above=True)
-
-    def paint_crosshair(self, painter):
-        if not self.hover:
-            return
-        painter.setPen(QPen(CROSSHAIR_COLOR, max(1.0, self.ratio)))
-        painter.drawLine(0, self.hover.y(), self.bounds.width(), self.hover.y())
-        painter.drawLine(self.hover.x(), 0, self.hover.x(), self.bounds.height())
 
     def paint_hint(self, painter):
         if self.show_hint and not self.drag:

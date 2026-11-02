@@ -10,6 +10,7 @@ from luma.capture.tonemap import tone_map_scrgb
 
 log = logging.getLogger("luma")
 CAPTURE_TIMEOUT_MS = 100
+REFRESH_TIMEOUT_MS = 16
 CAPTURE_MAX_ATTEMPTS = 30
 ROTATION_DEGREES_BY_ORIENTATION = {0: 0, 1: 90, 2: 180, 3: -90}
 
@@ -94,7 +95,7 @@ class DesktopCapturer:
         is_first_capture = index not in self.latest
         attempts = CAPTURE_MAX_ATTEMPTS if is_first_capture else 1
         for _attempt in range(attempts):
-            frame = session.acquire_frame(CAPTURE_TIMEOUT_MS)
+            frame = session.acquire_frame(CAPTURE_TIMEOUT_MS if is_first_capture else REFRESH_TIMEOUT_MS)
             if frame is not None and frame.to_numpy().any():
                 return frame
         if is_first_capture:
