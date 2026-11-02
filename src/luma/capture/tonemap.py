@@ -22,7 +22,7 @@ def tone_map_scrgb(pixels, sdr_white):
     peak = rgb.max(axis=-1)
     highlights = peak > sdr_white
     if highlights.any():
-        bright = np.nan_to_num(rgb[highlights].astype(np.float32), nan=0.0)
+        bright = np.maximum(np.nan_to_num(rgb[highlights].astype(np.float32), nan=0.0), 0.0)
         bright /= np.maximum(bright.max(axis=1, keepdims=True), 1e-6)
         mapped[highlights] = srgb_encode(bright)
     return mapped

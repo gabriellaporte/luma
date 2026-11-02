@@ -33,3 +33,10 @@ def test_highlights_keep_their_hue_instead_of_clipping_to_white():
     pixel = np.array([[[SDR_WHITE * 2, SDR_WHITE, 0.0, 1.0]]], dtype=np.float16)
     red, green, blue = tone_map_scrgb(pixel, SDR_WHITE)[0, 0]
     assert red == 255 and 0 < green < 255 and blue == 0
+
+
+def test_out_of_gamut_negative_channels_in_highlights_do_not_produce_invalid_values():
+    pixel = np.array([[[SDR_WHITE * 2, -0.5, 0.0, 1.0]]], dtype=np.float16)
+    with np.errstate(invalid="raise"):
+        red, green, blue = tone_map_scrgb(pixel, SDR_WHITE)[0, 0]
+    assert red == 255 and green == 0 and blue == 0
