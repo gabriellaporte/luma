@@ -3,42 +3,32 @@ import ctypes
 import logging
 import os
 import sys
-import threading
 import time
 from ctypes import wintypes
-from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QImage, QPainter
+from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtGui import QGuiApplication, QIcon, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import autostart
+import saving
 from display import DesktopCapturer, enable_per_monitor_dpi
-from overlay import CaptureSession
-from toast import Toast
+from hotkeys import HotkeyListener
 from identity import APP_NAME, __version__
+from overlay import CaptureSession
+from preferences import preferences
+from settings_dialog import SettingsDialog
+from theme import MENU_STYLE
+from toast import Toast
 
 BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 ICON_PATH = BUNDLE_DIR / "assets" / "icon.ico"
 LOG_PATH = Path(os.environ["LOCALAPPDATA"]) / APP_NAME / "app.log"
-SAVE_DIR = Path.home() / "Pictures" / APP_NAME
 ERROR_ALREADY_EXISTS = 183
 TRIM_DELAY_MS = 1500
-SWATCH_SIZE = (150, 96)
+COLOR_SWATCH_SIZE = (150, 96)
 
-VK_SNAPSHOT = 0x2C
-VK_A = 0x41
-MOD_ALT = 0x0001
-MOD_CONTROL = 0x0002
-MOD_NOREPEAT = 0x4000
-WM_HOTKEY = 0x0312
-HOTKEYS = {
-    1: ("Print Screen", 0, VK_SNAPSHOT),
-    2: ("Ctrl+Alt+A", MOD_CONTROL | MOD_ALT, VK_A),
-}
-
-user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 kernel32.GetCurrentProcess.restype = wintypes.HANDLE
 psapi = ctypes.WinDLL("psapi", use_last_error=True)
@@ -46,40 +36,10 @@ psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
 log = logging.getLogger("luma")
 
 
-class HotkeyListener(QObject):
-    pressed = Signal()
-
-    def start(self):
-        threading.Thread(target=self.listen, daemon=True).start()
-
-    def listen(self):
-        registered = 0
-        for hotkey_id, (name, modifiers, key) in HOTKEYS.items():
-            if user32.RegisterHotKey(None, hotkey_id, modifiers | MOD_NOREPEAT, key):
-                registered += 1
-                log.info("hotkey registered: %s", name)
-            else:
-                log.error("hotkey unavailable (in use by another app?): %s", name)
-        if not registered:
-            return
-        message = wintypes.MSG()
-        while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
-            if message.message == WM_HOTKEY:
-                self.pressed.emit()
-
-
 def trim_memory():
     """Hand idle pages back to Windows so the tray app stays tiny between captures."""
     if not psapi.EmptyWorkingSet(kernel32.GetCurrentProcess()):
         raise OSError(f"EmptyWorkingSet failed: {ctypes.get_last_error()}")
-
-
-def save_image(image):
-    SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    path = SAVE_DIR / f"luma-{datetime.now():%Y%m%d-%H%M%S}.png"
-    if not image.save(str(path)):
-        raise OSError(f"Could not save {path}")
-    return path
 
 
 def compose_desktop(shots):
@@ -105,58 +65,52 @@ class App:
         self.icon = QIcon(str(ICON_PATH))
         self.app.setWindowIcon(self.icon)
         self.capturer = DesktopCapturer()
+        self.hotkeys = HotkeyListener()
         self.session = None
-        self.settings = QSettings(APP_NAME, APP_NAME)
+        self.toast = None
         self.configure_autostart()
         self.tray = QSystemTrayIcon(self.icon)
-        self.tray.setToolTip(f"{APP_NAME} - Print Screen to capture")
         self.menu = self.build_menu()
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_tray_activated)
+        self.hotkeys.pressed.connect(self.capture)
+        self.hotkeys.unavailable.connect(self.warn_shortcut_unavailable)
         self.app.aboutToQuit.connect(self.capturer.close)
+        self.refresh_tooltip()
 
     def configure_autostart(self):
-        """Packaged builds register themselves on first run; later the tray menu decides."""
+        """Packaged builds register themselves on first run; the settings dialog decides after that."""
         if not getattr(sys, "frozen", False):
             return
-        if not self.settings.value("autostart_configured", False, bool):
+        store = QSettings(APP_NAME, APP_NAME)
+        if not store.value("autostart_configured", False, bool):
             autostart.enable(APP_NAME)
-            self.settings.setValue("autostart_configured", True)
+            store.setValue("autostart_configured", True)
         elif autostart.is_enabled(APP_NAME):
             autostart.enable(APP_NAME)
 
     def build_menu(self):
         menu = QMenu()
-        title = menu.addAction(f"{APP_NAME} {__version__}")
-        title.setEnabled(False)
+        menu.setStyleSheet(MENU_STYLE)
+        menu.addAction(f"{APP_NAME} {__version__}").setEnabled(False)
         menu.addSeparator()
-        menu.addAction("Capture\tPrint Screen", self.capture)
-        menu.addAction("Open screenshots folder", self.open_folder)
-        menu.addSeparator()
-        startup = menu.addAction("Start with Windows")
-        startup.setCheckable(True)
-        startup.setChecked(autostart.is_enabled(APP_NAME))
-        startup.toggled.connect(self.set_autostart)
+        menu.addAction("Capture", self.capture)
+        menu.addAction("Open screenshots folder", saving.open_save_folder)
+        menu.addAction("Settings...", self.open_settings)
         menu.addSeparator()
         menu.addAction("Quit", self.app.quit)
         return menu
 
-    def set_autostart(self, enabled):
-        if enabled:
-            autostart.enable(APP_NAME)
-        else:
-            autostart.disable(APP_NAME)
+    def refresh_tooltip(self):
+        self.tray.setToolTip(f"{APP_NAME} - {preferences.capture_shortcut} to capture")
 
     def run(self, open_now):
         self.capturer.snapshot()
         self.tray.show()
+        self.hotkeys.start()
         self.trim_soon()
         if open_now:
             self.capture()
-        else:
-            self.hotkeys = HotkeyListener()
-            self.hotkeys.pressed.connect(self.capture)
-            self.hotkeys.start()
         return self.app.exec()
 
     def trim_soon(self):
@@ -166,9 +120,20 @@ class App:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.capture()
 
-    def open_folder(self):
-        SAVE_DIR.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(SAVE_DIR)))
+    def warn_shortcut_unavailable(self, shortcut):
+        self.tray.showMessage(
+            APP_NAME,
+            f"The shortcut {shortcut} is already used by another app. Pick a different one in Settings.",
+            QSystemTrayIcon.MessageIcon.Warning,
+        )
+
+    def open_settings(self):
+        self.hotkeys.suspend()
+        SettingsDialog().exec()
+        self.hotkeys.reload()
+        self.refresh_tooltip()
+        if self.session is not None:
+            self.session.refocus()
 
     def capture(self):
         if self.session is not None:
@@ -178,34 +143,45 @@ class App:
         self.session = CaptureSession(shots)
         self.session.finished.connect(self.on_finished)
         self.session.color_picked.connect(self.on_color_picked)
+        self.session.settings_requested.connect(self.open_settings)
         self.session.cancelled.connect(self.on_cancelled)
         self.session.show()
         log.info("overlay open in %.0f ms", (time.perf_counter() - started) * 1000)
 
     def on_finished(self, image, action):
-        self.session = None
-        self.trim_soon()
+        self.end_session()
         if action == "copy":
             QGuiApplication.clipboard().setImage(image)
             message = "Copied to clipboard"
+            if preferences.save_on_copy:
+                message = f"Copied and saved {saving.save_to_default_folder(image).name}"
         else:
-            message = f"Saved {save_image(image).name}"
-        self.toast = Toast(image, message)
-        self.toast.show_briefly()
+            path = saving.save(image)
+            if path is None:
+                return
+            message = f"Saved {path.name}"
+        self.confirm(image, message)
 
     def on_color_picked(self, color):
-        self.session = None
-        self.trim_soon()
+        self.end_session()
         code = color.name().upper()
         QGuiApplication.clipboard().setText(code)
-        swatch = QImage(SWATCH_SIZE[0], SWATCH_SIZE[1], QImage.Format.Format_RGB32)
+        swatch = QImage(COLOR_SWATCH_SIZE[0], COLOR_SWATCH_SIZE[1], QImage.Format.Format_RGB32)
         swatch.fill(color)
-        self.toast = Toast(swatch, f"Copied {code}")
-        self.toast.show_briefly()
+        self.confirm(swatch, f"Copied {code}")
 
     def on_cancelled(self):
+        self.end_session()
+
+    def end_session(self):
         self.session = None
         self.trim_soon()
+
+    def confirm(self, image, message):
+        if not preferences.show_confirmation:
+            return
+        self.toast = Toast(image, message)
+        self.toast.show_briefly()
 
 
 def acquire_single_instance():

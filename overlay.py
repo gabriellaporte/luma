@@ -8,7 +8,6 @@ from PySide6.QtCore import (
     QPointF,
     QRect,
     QRectF,
-    QSettings,
     QSize,
     QSizeF,
     Qt,
@@ -27,9 +26,11 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
 )
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
-from identity import APP_NAME
+from preferences import preferences
+from saving import open_save_folder
+from theme import MENU_STYLE
 
 PALETTE = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#ffffff", "#1c1c1e"]
 STROKE_SIZES = [3, 6, 10]
@@ -47,7 +48,7 @@ LOUPE_OFFSET = 26
 CROSSHAIR_COLOR = QColor(255, 255, 255, 90)
 HINT_TEXT = (
     "Drag to select   |   Double-click: whole screen   |   "
-    "Hold Ctrl: magnifier, Ctrl+C: copy color   |   Esc: cancel"
+    "Hold Ctrl: magnifier, Ctrl+C: copy color   |   Right-click: menu   |   Esc: cancel"
 )
 SNAP_HOLD_MS = 450
 SMOOTHING_WINDOW = 2
@@ -73,7 +74,12 @@ TOOLS = [
 ]
 MARKER_WIDTH_FACTOR = 4
 MARKER_ALPHA = 110
-DIM_COLOR = QColor(0, 0, 0, 130)
+SETTINGS_BUTTON_MARGIN = 20
+SETTINGS_BUTTON_STYLE = """
+QToolButton { background: rgba(28, 28, 30, 235); color: white; border: 1px solid rgba(255, 255, 255, 38);
+              border-radius: 10px; padding: 6px 12px; font-size: 12px; }
+QToolButton:hover { background: rgba(58, 58, 60, 240); }
+"""
 ACCENT = QColor("#0a84ff")
 HANDLE_SIZE = 9
 HANDLE_HIT_MARGIN = 8
@@ -384,6 +390,23 @@ def dot_icon(color, diameter):
     return QIcon(pixmap)
 
 
+def gear_icon():
+    pixmap = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    center = SWATCH_SIZE / 2
+    painter.translate(center, center)
+    painter.setPen(QPen(QColor("white"), 2.2, Qt.SolidLine, Qt.RoundCap))
+    for _tooth in range(8):
+        painter.drawLine(QPointF(0, -center + 1.2), QPointF(0, -center + 3.6))
+        painter.rotate(45)
+    painter.setBrush(Qt.NoBrush)
+    painter.drawEllipse(QPointF(0, 0), center - 5, center - 5)
+    painter.end()
+    return QIcon(pixmap)
+
+
 def force_foreground(window):
     """Windows only lets the foreground app take focus; a synthetic Alt press lifts that lock."""
     user32.keybd_event(VK_MENU, 0, 0, 0)
@@ -481,10 +504,10 @@ class Overlay(QWidget):
         self.setGeometry(screen.geometry())
         self.ratio = self.source.width() / screen.geometry().width()
 
-        self.settings = QSettings(APP_NAME, APP_NAME)
-        self.color = self.settings.value("color", PALETTE[0], str)
-        self.stroke_size = self.settings.value("size", STROKE_SIZES[1], int)
-        self.tool = None
+        self.color = preferences.pen_color
+        self.stroke_size = preferences.pen_size
+        self.tool = preferences.default_tool or None
+        self.dim_color = QColor(0, 0, 0, round(255 * preferences.dim_percent / 100))
         self.selection = None
         self.drag = None
         self.hover = None
@@ -499,6 +522,35 @@ class Overlay(QWidget):
         self.toolbar = Toolbar(self, self)
         self.toolbar.hide()
         self.sync_toolbar()
+        self.settings_button = self.build_settings_button()
+
+    def build_settings_button(self):
+        button = QToolButton(self)
+        button.setText("Settings")
+        button.setIcon(gear_icon())
+        button.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
+        button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        button.setStyleSheet(SETTINGS_BUTTON_STYLE)
+        button.setFocusPolicy(Qt.NoFocus)
+        button.setCursor(Qt.PointingHandCursor)
+        button.clicked.connect(self.session.open_settings)
+        button.adjustSize()
+        return button
+
+    def resizeEvent(self, _event):
+        self.settings_button.move(
+            self.width() - self.settings_button.width() - SETTINGS_BUTTON_MARGIN,
+            SETTINGS_BUTTON_MARGIN,
+        )
+
+    def show_context_menu(self, global_position):
+        menu = QMenu(self)
+        menu.setStyleSheet(MENU_STYLE)
+        menu.addAction("Settings...", self.session.open_settings)
+        menu.addAction("Open screenshots folder", open_save_folder)
+        menu.addSeparator()
+        menu.addAction("Cancel capture", self.cancel)
+        menu.exec(global_position)
 
     def physical(self, position):
         return QPoint(
@@ -507,7 +559,10 @@ class Overlay(QWidget):
         )
 
     def activate(self):
-        self.show_hint = True
+        self.show_hint = preferences.show_hint
+        self.refocus()
+
+    def refocus(self):
         self.raise_()
         self.activateWindow()
         force_foreground(self)
@@ -539,12 +594,12 @@ class Overlay(QWidget):
 
     def select_color(self, color):
         self.color = color
-        self.settings.setValue("color", color)
+        preferences.pen_color = color
         self.sync_toolbar()
 
     def select_size(self, size):
         self.stroke_size = size
-        self.settings.setValue("size", size)
+        preferences.pen_size = size
         self.sync_toolbar()
 
     def undo(self):
@@ -613,7 +668,7 @@ class Overlay(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.RightButton:
-            self.cancel()
+            self.show_context_menu(event.globalPosition().toPoint())
             return
         if event.button() != Qt.LeftButton:
             return
@@ -802,7 +857,7 @@ class Overlay(QWidget):
         if self.selection:
             self.paint_selection(painter)
         else:
-            painter.fillRect(self.bounds, DIM_COLOR)
+            painter.fillRect(self.bounds, self.dim_color)
             self.paint_crosshair(painter)
             self.paint_hint(painter)
         if self.is_picking() and self.is_ctrl_down():
@@ -816,7 +871,7 @@ class Overlay(QWidget):
             QRect(0, rect.top(), rect.left(), rect.height()),
             QRect(rect.right() + 1, rect.top(), bounds.width() - rect.right() - 1, rect.height()),
         ]:
-            painter.fillRect(region, DIM_COLOR)
+            painter.fillRect(region, self.dim_color)
 
         painter.save()
         painter.setClipRect(rect)
@@ -913,6 +968,7 @@ class Overlay(QWidget):
 class CaptureSession(QObject):
     finished = Signal(object, str)
     color_picked = Signal(object)
+    settings_requested = Signal()
     cancelled = Signal()
 
     def __init__(self, shots):
@@ -935,6 +991,14 @@ class CaptureSession(QObject):
         cursor = QCursor.pos()
         under_cursor = next((o for o in self.overlays if o.geometry().contains(cursor)), self.overlays[0])
         under_cursor.activate()
+
+    def open_settings(self):
+        self.settings_requested.emit()
+
+    def refocus(self):
+        cursor = QCursor.pos()
+        target = next((o for o in self.overlays if o.geometry().contains(cursor)), self.overlays[0])
+        target.refocus()
 
     def claim(self, owner):
         for overlay in self.overlays:
