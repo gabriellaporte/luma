@@ -152,15 +152,15 @@ class App:
         self.end_session()
         if action == "copy":
             QGuiApplication.clipboard().setImage(image)
-            message = "Copied to clipboard"
+            title, detail = "Copied to clipboard", f"{image.width()} x {image.height()}"
             if preferences.save_on_copy:
-                message = f"Copied and saved {saving.save_to_default_folder(image).name}"
+                title, detail = "Copied and saved", saving.save_to_default_folder(image).name
         else:
             path = saving.save(image)
             if path is None:
                 return
-            message = f"Saved {path.name}"
-        self.confirm(image, message)
+            title, detail = "Saved", path.name
+        self.confirm(image, title, detail)
 
     def on_color_picked(self, color):
         self.end_session()
@@ -168,7 +168,7 @@ class App:
         QGuiApplication.clipboard().setText(code)
         swatch = QImage(COLOR_SWATCH_SIZE[0], COLOR_SWATCH_SIZE[1], QImage.Format.Format_RGB32)
         swatch.fill(color)
-        self.confirm(swatch, f"Copied {code}")
+        self.confirm(swatch, "Color copied", code)
 
     def on_cancelled(self):
         self.end_session()
@@ -177,10 +177,10 @@ class App:
         self.session = None
         self.trim_soon()
 
-    def confirm(self, image, message):
+    def confirm(self, image, title, detail):
         if not preferences.show_confirmation:
             return
-        self.toast = Toast(image, message)
+        self.toast = Toast(image, title, detail)
         self.toast.show_briefly()
 
 
