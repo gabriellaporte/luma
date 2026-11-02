@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luma-screenshot"
+dynamic = ["version"]
+description = "A fast, lightweight screenshot tool for Windows."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "numpy>=2.0",
+    "windows-capture>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pyinstaller>=6.10",
+    "pillow>=11.0",
+]
+
+[project.gui-scripts]
+luma = "luma.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "luma.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+luma = ["assets/*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

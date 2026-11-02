@@ -6,7 +6,7 @@ from ctypes import wintypes
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QKeySequence
 
-from preferences import preferences
+from luma.preferences import preferences
 
 log = logging.getLogger("luma")
 

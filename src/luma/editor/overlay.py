@@ -27,10 +27,10 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
-from icons import glyph_icon, swatch_icon, thickness_icon
-from preferences import preferences
-from saving import open_save_folder
-from theme import MENU_STYLE
+from luma.ui.icons import glyph_icon, swatch_icon, thickness_icon
+from luma.preferences import preferences
+from luma.saving import open_save_folder
+from luma.ui.theme import MENU_STYLE
 
 PALETTE = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#ffffff", "#1c1c1e"]
 STROKE_SIZES = [3, 6, 10]

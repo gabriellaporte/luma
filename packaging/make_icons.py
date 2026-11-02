@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
-ASSETS = Path(__file__).resolve().parent.parent / "assets"
+ASSETS = Path(__file__).resolve().parent.parent / "src" / "luma" / "assets"
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 PNG_SIZE = 256
 

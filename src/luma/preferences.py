@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from identity import APP_NAME
+from luma import APP_NAME
 
 
 class Setting:

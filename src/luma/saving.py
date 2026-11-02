@@ -6,7 +6,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
-from preferences import preferences
+from luma.preferences import preferences
 
 IMAGE_FORMATS = {"PNG": "png", "JPEG": "jpg", "WebP": "webp"}
 LOSSY_FORMATS = ("JPEG", "WebP")

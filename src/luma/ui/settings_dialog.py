@@ -22,14 +22,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-import autostart
-from hotkeys import to_windows_hotkey
-from identity import APP_NAME, __version__
-from icons import swatch_icon
-from overlay import PALETTE, STROKE_SIZES, TOOLS
-from preferences import preferences
-from saving import IMAGE_FORMATS, LOSSY_FORMATS, file_stem, open_save_folder
-from theme import dialog_style
+from luma.system import autostart
+from luma.system.hotkeys import to_windows_hotkey
+from luma import APP_NAME, __version__
+from luma.ui.icons import swatch_icon
+from luma.editor.overlay import PALETTE, STROKE_SIZES, TOOLS
+from luma.preferences import preferences
+from luma.saving import IMAGE_FORMATS, LOSSY_FORMATS, file_stem, open_save_folder
+from luma.ui.theme import dialog_style
 
 MIN_QUALITY = 10
 MAX_DIM_PERCENT = 90

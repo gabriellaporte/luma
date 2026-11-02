@@ -11,19 +11,18 @@ from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-import autostart
-import saving
-from display import DesktopCapturer, enable_per_monitor_dpi
-from hotkeys import HotkeyListener
-from identity import APP_NAME, __version__
-from overlay import CaptureSession
-from preferences import preferences
-from settings_dialog import SettingsDialog
-from theme import MENU_STYLE
-from toast import Toast
+from luma.system import autostart
+from luma import saving
+from luma.capture.desktop import DesktopCapturer, enable_per_monitor_dpi
+from luma.system.hotkeys import HotkeyListener
+from luma import APP_NAME, __version__
+from luma.editor.overlay import CaptureSession
+from luma.preferences import preferences
+from luma.ui.settings_dialog import SettingsDialog
+from luma.ui.theme import MENU_STYLE
+from luma.ui.toast import Toast
 
-BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-ICON_PATH = BUNDLE_DIR / "assets" / "icon.ico"
+ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
 LOG_PATH = Path(os.environ["LOCALAPPDATA"]) / APP_NAME / "app.log"
 ERROR_ALREADY_EXISTS = 183
 TRIM_DELAY_MS = 1500

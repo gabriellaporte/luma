@@ -1,7 +1,7 @@
 """Builds the Windows executable (dist/Luma) and optionally installs it for the current user.
 
-    python build.py            build only
-    python build.py --install  build, copy to %LOCALAPPDATA%\\Programs, add a Start Menu shortcut, launch
+    python packaging/build.py            build only
+    python packaging/build.py --install  build, copy to %LOCALAPPDATA%\\Programs, add a Start Menu shortcut, launch
 """
 
 import argparse
@@ -22,9 +22,11 @@ from PyInstaller.utils.win32.versioninfo import (
     VSVersionInfo,
 )
 
-from identity import APP_NAME, __version__
+from luma import APP_NAME, __version__
 
-ROOT = Path(__file__).resolve().parent
+PACKAGING_DIR = Path(__file__).resolve().parent
+ROOT = PACKAGING_DIR.parent
+ASSETS_DIR = ROOT / "src" / "luma" / "assets"
 BUILD_DIR = ROOT / "build"
 DIST_DIR = ROOT / "dist" / APP_NAME
 INSTALL_DIR = Path(os.environ["LOCALAPPDATA"]) / "Programs" / APP_NAME
@@ -66,15 +68,16 @@ def write_version_info():
 def build():
     PyInstaller.__main__.run(
         [
-            str(ROOT / "luma.py"),
+            str(PACKAGING_DIR / "launcher.py"),
             "--noconfirm",
             "--windowed",
             "--name", APP_NAME,
-            "--icon", str(ROOT / "assets" / "icon.ico"),
-            "--add-data", f"{ROOT / 'assets'};assets",
+            "--icon", str(ASSETS_DIR / "icon.ico"),
+            "--add-data", f"{ASSETS_DIR};luma/assets",
             "--version-file", str(write_version_info()),
             "--collect-all", "windows_capture",
-            "--paths", str(ROOT / "tools" / "cv2_stub"),
+            "--paths", str(PACKAGING_DIR / "cv2_stub"),
+            "--paths", str(ROOT / "src"),
             "--distpath", str(ROOT / "dist"),
             "--workpath", str(BUILD_DIR),
             "--specpath", str(BUILD_DIR),
