@@ -11,13 +11,13 @@ from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtGui import QGuiApplication, QIcon, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from luma.system import autostart
-from luma import saving
-from luma.capture.desktop import DesktopCapturer, enable_per_monitor_dpi
-from luma.system.hotkeys import HotkeyListener
-from luma import APP_NAME, __version__
-from luma.editor.overlay import CaptureSession
+from luma import APP_NAME, __version__, saving
+from luma.capture.desktop import DesktopCapturer
+from luma.capture.displays import enable_per_monitor_dpi
+from luma.editor.session import CaptureSession
 from luma.preferences import preferences
+from luma.system import autostart
+from luma.system.hotkeys import HotkeyListener
 from luma.ui.settings_dialog import SettingsDialog
 from luma.ui.theme import MENU_STYLE
 from luma.ui.toast import Toast

@@ -1,7 +1,7 @@
 """Builds the Windows executable (dist/Luma) and optionally installs it for the current user.
 
-    python packaging/build.py            build only
-    python packaging/build.py --install  build, copy to %LOCALAPPDATA%\\Programs, add a Start Menu shortcut, launch
+python packaging/build.py            build only
+python packaging/build.py --install  build, install for this user, add a Start Menu shortcut
 """
 
 import argparse
@@ -33,7 +33,14 @@ INSTALL_DIR = Path(os.environ["LOCALAPPDATA"]) / "Programs" / APP_NAME
 START_MENU = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
 REMOVE_ATTEMPTS = 8
 REMOVE_RETRY_SECONDS = 1
-EXCLUDED_MODULES = ["tkinter", "PIL", "PySide6.QtNetwork", "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtPdf"]
+EXCLUDED_MODULES = [
+    "tkinter",
+    "PIL",
+    "PySide6.QtNetwork",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtPdf",
+]
 
 
 def write_version_info():
@@ -71,16 +78,26 @@ def build():
             str(PACKAGING_DIR / "launcher.py"),
             "--noconfirm",
             "--windowed",
-            "--name", APP_NAME,
-            "--icon", str(ASSETS_DIR / "icon.ico"),
-            "--add-data", f"{ASSETS_DIR};luma/assets",
-            "--version-file", str(write_version_info()),
-            "--collect-all", "windows_capture",
-            "--paths", str(PACKAGING_DIR / "cv2_stub"),
-            "--paths", str(ROOT / "src"),
-            "--distpath", str(ROOT / "dist"),
-            "--workpath", str(BUILD_DIR),
-            "--specpath", str(BUILD_DIR),
+            "--name",
+            APP_NAME,
+            "--icon",
+            str(ASSETS_DIR / "icon.ico"),
+            "--add-data",
+            f"{ASSETS_DIR};luma/assets",
+            "--version-file",
+            str(write_version_info()),
+            "--collect-all",
+            "windows_capture",
+            "--paths",
+            str(PACKAGING_DIR / "cv2_stub"),
+            "--paths",
+            str(ROOT / "src"),
+            "--distpath",
+            str(ROOT / "dist"),
+            "--workpath",
+            str(BUILD_DIR),
+            "--specpath",
+            str(BUILD_DIR),
             *[arg for module in EXCLUDED_MODULES for arg in ("--exclude-module", module)],
         ]
     )
@@ -116,9 +133,9 @@ def install():
     executable = INSTALL_DIR / f"{APP_NAME}.exe"
     shortcut = START_MENU / f"{APP_NAME}.lnk"
     script = (
-        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{shortcut}');"
-        "$s.TargetPath = '{target}'; $s.WorkingDirectory = '{folder}'; $s.Save()"
-    ).format(shortcut=shortcut, target=executable, folder=INSTALL_DIR)
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{shortcut}');"
+        f"$s.TargetPath = '{executable}'; $s.WorkingDirectory = '{INSTALL_DIR}'; $s.Save()"
+    )
     subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True)
     subprocess.Popen([str(executable)], cwd=INSTALL_DIR)
 

@@ -22,13 +22,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from luma.system import autostart
-from luma.system.hotkeys import to_windows_hotkey
 from luma import APP_NAME, __version__
-from luma.ui.icons import swatch_icon
-from luma.editor.overlay import PALETTE, STROKE_SIZES, TOOLS
+from luma.editor.tools import PALETTE, STROKE_SIZES, TOOLS
 from luma.preferences import preferences
 from luma.saving import IMAGE_FORMATS, LOSSY_FORMATS, file_stem, open_save_folder
+from luma.system import autostart
+from luma.system.hotkeys import to_windows_hotkey
+from luma.ui.icons import swatch_icon
 from luma.ui.theme import dialog_style
 
 MIN_QUALITY = 10
@@ -101,8 +101,12 @@ class SettingsDialog(QDialog):
         self.shortcut_error = QLabel()
         self.shortcut_error.setObjectName("error")
 
-        self.primary_edit = self.shortcut_edit(preferences.capture_shortcut, "capture_shortcut", required=True)
-        self.secondary_edit = self.shortcut_edit(preferences.secondary_shortcut, "secondary_shortcut", required=False)
+        self.primary_edit = self.shortcut_edit(
+            preferences.capture_shortcut, "capture_shortcut", required=True
+        )
+        self.secondary_edit = self.shortcut_edit(
+            preferences.secondary_shortcut, "secondary_shortcut", required=False
+        )
         clear = QPushButton("Clear")
         clear.clicked.connect(self.secondary_edit.clear)
         secondary_row = QHBoxLayout()
@@ -112,10 +116,27 @@ class SettingsDialog(QDialog):
         form.addRow("Capture shortcut", self.primary_edit)
         form.addRow("Second shortcut", secondary_row)
         form.addRow(self.shortcut_error)
-        form.addRow(hint("Click a box and press the keys you want. Print Screen, letters, digits and F-keys with Ctrl, Alt, Shift or Win all work."))
+        form.addRow(
+            hint(
+                "Click a box and press the keys you want. Print Screen, letters, digits and F-keys, "
+                "with Ctrl, Alt, Shift or Win, all work."
+            )
+        )
         form.addRow(checkbox("Start with Windows", autostart.is_enabled(APP_NAME), self.set_autostart))
-        form.addRow(checkbox("Show a confirmation after copying or saving", preferences.show_confirmation, lambda value: setattr(preferences, "show_confirmation", value)))
-        form.addRow(checkbox("Show the help hint when a capture starts", preferences.show_hint, lambda value: setattr(preferences, "show_hint", value)))
+        form.addRow(
+            checkbox(
+                "Show a confirmation after copying or saving",
+                preferences.show_confirmation,
+                lambda value: setattr(preferences, "show_confirmation", value),
+            )
+        )
+        form.addRow(
+            checkbox(
+                "Show the help hint when a capture starts",
+                preferences.show_hint,
+                lambda value: setattr(preferences, "show_hint", value),
+            )
+        )
         return widget
 
     def shortcut_edit(self, value, setting, required):
@@ -126,7 +147,9 @@ class SettingsDialog(QDialog):
 
     def store_shortcut(self, edit, setting, required):
         text = edit.keySequence().toString()
-        other = preferences.secondary_shortcut if setting == "capture_shortcut" else preferences.capture_shortcut
+        other = (
+            preferences.secondary_shortcut if setting == "capture_shortcut" else preferences.capture_shortcut
+        )
         try:
             if text:
                 to_windows_hotkey(text)
@@ -151,7 +174,9 @@ class SettingsDialog(QDialog):
         widget, form = self.page()
 
         self.folder_edit = QLineEdit(preferences.save_folder)
-        self.folder_edit.editingFinished.connect(lambda: setattr(preferences, "save_folder", self.folder_edit.text()))
+        self.folder_edit.editingFinished.connect(
+            lambda: setattr(preferences, "save_folder", self.folder_edit.text())
+        )
         browse = QPushButton("Browse...")
         browse.clicked.connect(self.browse_folder)
         open_folder = QPushButton("Open")
@@ -181,8 +206,20 @@ class SettingsDialog(QDialog):
         form.addRow(hint(FILE_NAME_HELP))
         form.addRow("Format", self.format_box)
         form.addRow("Quality (JPEG and WebP)", self.quality_box)
-        form.addRow(checkbox("Ask where to save every time", preferences.ask_where_to_save, lambda value: setattr(preferences, "ask_where_to_save", value)))
-        form.addRow(checkbox("Also save a file whenever I copy to the clipboard", preferences.save_on_copy, lambda value: setattr(preferences, "save_on_copy", value)))
+        form.addRow(
+            checkbox(
+                "Ask where to save every time",
+                preferences.ask_where_to_save,
+                lambda value: setattr(preferences, "ask_where_to_save", value),
+            )
+        )
+        form.addRow(
+            checkbox(
+                "Also save a file whenever I copy to the clipboard",
+                preferences.save_on_copy,
+                lambda value: setattr(preferences, "save_on_copy", value),
+            )
+        )
         self.refresh_saving_labels()
         return widget
 
@@ -213,7 +250,9 @@ class SettingsDialog(QDialog):
         for kind, label, _key in TOOLS:
             tool_box.addItem(label, kind)
         tool_box.setCurrentIndex(max(0, tool_box.findData(preferences.default_tool)))
-        tool_box.currentIndexChanged.connect(lambda: setattr(preferences, "default_tool", tool_box.currentData()))
+        tool_box.currentIndexChanged.connect(
+            lambda: setattr(preferences, "default_tool", tool_box.currentData())
+        )
 
         swatches = QHBoxLayout()
         group = QButtonGroup(widget)
@@ -244,5 +283,10 @@ class SettingsDialog(QDialog):
         form.addRow("Annotation color", swatches)
         form.addRow("Annotation size", size_box)
         form.addRow("Background dimming", dim_box)
-        form.addRow(hint("Changes apply from the next capture. The color and size also follow what you pick in the toolbar."))
+        form.addRow(
+            hint(
+                "Changes apply from the next capture. The color and size also follow "
+                "what you pick in the toolbar."
+            )
+        )
         return widget

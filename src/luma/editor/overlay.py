@@ -1,47 +1,29 @@
-import ctypes
-import math
-from ctypes import wintypes
-
 from PySide6.QtCore import (
-    QObject,
     QPoint,
-    QPointF,
     QRect,
     QRectF,
     QSize,
-    QSizeF,
     Qt,
     QTimer,
-    Signal,
 )
 from PySide6.QtGui import (
     QColor,
-    QCursor,
     QFont,
-    QGuiApplication,
     QPainter,
-    QPainterPath,
     QPen,
     QPixmap,
-    QPolygonF,
 )
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
+from PySide6.QtWidgets import QMenu, QToolButton, QWidget
 
-from luma.ui.icons import glyph_icon, swatch_icon, thickness_icon
+from luma.editor.annotations import Annotation
+from luma.editor.toolbar import Toolbar
+from luma.editor.tools import FREEHAND_TOOLS, TEXT_PIXELS, TOOLS
 from luma.preferences import preferences
 from luma.saving import open_save_folder
+from luma.system.keyboard import force_foreground, is_ctrl_down
+from luma.ui.icons import glyph_icon
 from luma.ui.theme import MENU_STYLE
 
-PALETTE = ["#ff3b30", "#ffcc00", "#34c759", "#0a84ff", "#ffffff", "#1c1c1e"]
-STROKE_SIZES = [3, 6, 10]
-TEXT_PIXELS = {3: 18, 6: 28, 10: 44}
-REDACT_BLOCK_FACTOR = 2.5
-TEXT_FLAGS = (
-    Qt.AlignmentFlag.AlignLeft.value
-    | Qt.AlignmentFlag.AlignTop.value
-    | Qt.TextFlag.TextDontClip.value
-)
-TEXT_SHADOW = QColor(0, 0, 0, 150)
 LOUPE_PIXELS = 15
 LOUPE_CELL = 9
 LOUPE_OFFSET = 26
@@ -51,29 +33,9 @@ HINT_TEXT = (
     "Hold Ctrl: magnifier, Ctrl+C: copy color   |   Right-click: menu   |   Esc: cancel"
 )
 SNAP_HOLD_MS = 450
-SMOOTHING_WINDOW = 2
-SMOOTHING_PASSES = 3
-MIN_SNAP_POINTS = 8
-MIN_SNAP_SIZE = 24
-LINE_TOLERANCE = 0.06
-CLOSED_SHAPE_RATIO = 0.3
-SHAPE_TOLERANCE = 0.06
-VK_CONTROL = 0x11
-KEY_DOWN_MASK = 0x8000
 HINT_TOP = 56
 NUDGE_PIXELS = 1
 NUDGE_PIXELS_FAST = 10
-TOOLS = [
-    ("pen", "Pen", Qt.Key_P),
-    ("arrow", "Arrow", Qt.Key_A),
-    ("marker", "Marker", Qt.Key_M),
-    ("box", "Box", Qt.Key_B),
-    ("ellipse", "Ellipse", Qt.Key_O),
-    ("text", "Text", Qt.Key_T),
-    ("redact", "Redact", Qt.Key_R),
-]
-MARKER_WIDTH_FACTOR = 4
-MARKER_ALPHA = 110
 SETTINGS_BUTTON_MARGIN = 20
 SETTINGS_BUTTON_STYLE = """
 QToolButton { background: rgba(28, 28, 30, 235); color: white; border: 1px solid rgba(255, 255, 255, 38);
@@ -87,44 +49,13 @@ MIN_SELECTION_SIZE = 4
 TOOLBAR_GAP = 8
 LABEL_PADDING = 6
 LABEL_FONT_PIXELS = 12
-ICON_SIZE = 22
-SWATCH_ICON_SIZE = 24
 SETTINGS_ICON_SIZE = 18
-
-TOOLBAR_STYLE = """
-#toolbar { background: rgba(32, 32, 36, 244); border: 1px solid rgba(255, 255, 255, 30);
-           border-radius: 14px; }
-#toolbar QToolButton { color: #f5f5f7; border: none; border-radius: 9px; padding: 6px;
-                       font-size: 12px; font-weight: 600; }
-#toolbar QToolButton:hover { background: rgba(255, 255, 255, 30); }
-#toolbar QToolButton:checked { background: rgba(10, 132, 255, 230); }
-#toolbar QToolButton#swatch { border: 2px solid transparent; border-radius: 15px; padding: 3px; }
-#toolbar QToolButton#swatch:hover { background: transparent; border-color: rgba(255, 255, 255, 90); }
-#toolbar QToolButton#swatch:checked { background: transparent; border-color: white; }
-#toolbar QToolButton#primary { background: #0a84ff; padding: 6px 14px 6px 10px; }
-#toolbar QToolButton#primary:hover { background: #3b9bff; }
-#toolbar QFrame#separator { background: rgba(255, 255, 255, 40); max-width: 1px; min-width: 1px; }
-"""
-
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
-TOOL_HINTS = {
-    "pen": "hold still at the end of a stroke to snap it to a line, oval or box",
-    "marker": "hold still at the end of a stroke to straighten it",
-}
-KEYEVENTF_KEYUP = 0x0002
-VK_MENU = 0x12
-
-FREEHAND_TOOLS = ("pen", "marker")
-
 ARROW_KEY_DIRECTIONS = {
     Qt.Key_Left: QPoint(-1, 0),
     Qt.Key_Right: QPoint(1, 0),
     Qt.Key_Up: QPoint(0, -1),
     Qt.Key_Down: QPoint(0, 1),
 }
-
 CURSOR_BY_EDGES = {
     "l": Qt.SizeHorCursor,
     "r": Qt.SizeHorCursor,
@@ -135,298 +66,6 @@ CURSOR_BY_EDGES = {
     "rt": Qt.SizeBDiagCursor,
     "lb": Qt.SizeBDiagCursor,
 }
-
-
-def arrow_polygon(start, end, width):
-    dx, dy = end.x() - start.x(), end.y() - start.y()
-    length = math.hypot(dx, dy)
-    if length < 1:
-        return None
-    ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    head_length = min(width * 4 + 6, length)
-    head_half = width * 2 + 3
-    half = width / 2
-    bx, by = end.x() - ux * head_length, end.y() - uy * head_length
-    return QPolygonF(
-        [
-            QPointF(start.x() + nx * half, start.y() + ny * half),
-            QPointF(bx + nx * half, by + ny * half),
-            QPointF(bx + nx * head_half, by + ny * head_half),
-            QPointF(end),
-            QPointF(bx - nx * head_half, by - ny * head_half),
-            QPointF(bx - nx * half, by - ny * half),
-            QPointF(start.x() - nx * half, start.y() - ny * half),
-        ]
-    )
-
-
-def smooth_points(points):
-    """Moving average that keeps both endpoints, to take the tremor out of a hand-drawn stroke."""
-    smoothed = list(points)
-    if len(smoothed) < 3:
-        return smoothed
-    for _pass in range(SMOOTHING_PASSES):
-        previous = list(smoothed)
-        for index in range(1, len(previous) - 1):
-            window = previous[max(0, index - SMOOTHING_WINDOW) : index + SMOOTHING_WINDOW + 1]
-            smoothed[index] = QPointF(
-                sum(p.x() for p in window) / len(window),
-                sum(p.y() for p in window) / len(window),
-            )
-    return smoothed
-
-
-def distance(a, b):
-    return math.hypot(a.x() - b.x(), a.y() - b.y())
-
-
-def recognize_shape(points, allow_closed):
-    """The clean shape a rough stroke was meant to be, as (kind, points), or None."""
-    if len(points) < MIN_SNAP_POINTS:
-        return None
-    xs, ys = [p.x() for p in points], [p.y() for p in points]
-    bounds = QRectF(QPointF(min(xs), min(ys)), QPointF(max(xs), max(ys)))
-    diagonal = math.hypot(bounds.width(), bounds.height())
-    if diagonal < MIN_SNAP_SIZE:
-        return None
-
-    start, end = points[0], points[-1]
-    chord = distance(start, end)
-    if chord > diagonal * CLOSED_SHAPE_RATIO:
-        return line_if_straight(points, chord)
-    if not allow_closed:
-        return None
-    return closed_shape(points, bounds, diagonal)
-
-
-def line_if_straight(points, chord):
-    start, end = points[0], points[-1]
-    dx, dy = end.x() - start.x(), end.y() - start.y()
-    deviation = max(abs(dx * (p.y() - start.y()) - dy * (p.x() - start.x())) / chord for p in points)
-    if deviation > chord * LINE_TOLERANCE:
-        return None
-    return ("line", [start, end])
-
-
-def closed_shape(points, bounds, diagonal):
-    center = bounds.center()
-    radius_x, radius_y = bounds.width() / 2, bounds.height() / 2
-    if radius_x < 1 or radius_y < 1:
-        return None
-    box_error = sum(
-        min(
-            abs(p.x() - bounds.left()),
-            abs(p.x() - bounds.right()),
-            abs(p.y() - bounds.top()),
-            abs(p.y() - bounds.bottom()),
-        )
-        for p in points
-    )
-    oval_error = sum(
-        abs(math.hypot((p.x() - center.x()) / radius_x, (p.y() - center.y()) / radius_y) - 1)
-        * min(radius_x, radius_y)
-        for p in points
-    )
-    kind, error = min(("box", box_error), ("ellipse", oval_error), key=lambda pair: pair[1])
-    if error / len(points) > diagonal * SHAPE_TOLERANCE:
-        return None
-    return (kind, [bounds.topLeft(), bounds.bottomRight()])
-
-
-class Annotation:
-    def __init__(self, kind, color, width, start, source):
-        self.kind = kind
-        self.color = QColor(color)
-        self.width = width
-        self.points = [QPointF(start)]
-        self.source = source
-        self.text = ""
-        self.is_editing = False
-        self.is_snapped = False
-
-    def finish_stroke(self):
-        if not self.is_snapped:
-            self.points = smooth_points(self.points)
-
-    def snap_to_shape(self):
-        shape = recognize_shape(self.points, allow_closed=self.kind == "pen")
-        if shape is None:
-            return False
-        shape_kind, self.points = shape
-        if shape_kind != "line":
-            self.kind = shape_kind
-        self.is_snapped = True
-        return True
-
-    def extend(self, point):
-        if self.kind in ("pen", "marker"):
-            self.points.append(QPointF(point))
-        else:
-            self.points = [self.points[0], QPointF(point)]
-
-    def paint(self, painter):
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing)
-        getattr(self, f"paint_{self.kind}")(painter)
-        painter.restore()
-
-    def paint_arrow(self, painter):
-        polygon = arrow_polygon(self.points[0], self.points[-1], self.width)
-        if polygon is not None:
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(self.color)
-            painter.drawPolygon(polygon)
-
-    def paint_box(self, painter):
-        painter.setPen(QPen(self.color, self.width, Qt.SolidLine, Qt.SquareCap, Qt.RoundJoin))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(QRectF(self.points[0], self.points[-1]).normalized())
-
-    def paint_ellipse(self, painter):
-        painter.setPen(QPen(self.color, self.width))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(QRectF(self.points[0], self.points[-1]).normalized())
-
-    def paint_pen(self, painter):
-        self.paint_stroke(painter, self.color, self.width)
-
-    def paint_marker(self, painter):
-        color = QColor(self.color)
-        color.setAlpha(MARKER_ALPHA)
-        self.paint_stroke(painter, color, self.width * MARKER_WIDTH_FACTOR)
-
-    def paint_stroke(self, painter, color, width):
-        painter.setPen(QPen(color, width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        path = QPainterPath(self.points[0])
-        for current, following in zip(self.points[1:-1], self.points[2:]):
-            path.quadTo(current, (current + following) / 2)
-        path.lineTo(self.points[-1])
-        painter.drawPath(path)
-        if len(self.points) == 1:
-            painter.drawPoint(self.points[0])
-
-    def paint_redact(self, painter):
-        rect = QRectF(self.points[0], self.points[-1]).normalized().toAlignedRect()
-        rect = rect.intersected(self.source.rect())
-        if rect.isEmpty():
-            return
-        block = max(2, round(self.width * REDACT_BLOCK_FACTOR))
-        small = self.source.copy(rect).scaled(
-            max(1, rect.width() // block),
-            max(1, rect.height() // block),
-            Qt.IgnoreAspectRatio,
-            Qt.SmoothTransformation,
-        )
-        painter.drawImage(rect.topLeft(), small.scaled(rect.size(), Qt.IgnoreAspectRatio, Qt.FastTransformation))
-
-    def paint_text(self, painter):
-        font = QFont()
-        font.setPixelSize(round(self.width))
-        font.setBold(True)
-        painter.setFont(font)
-        metrics = painter.fontMetrics()
-        origin = self.points[0]
-        box = QRectF(origin, QSizeF(metrics.horizontalAdvance(self.text) + 4, metrics.height()))
-        shadow_offset = max(1.0, self.width / 18)
-        painter.setPen(TEXT_SHADOW)
-        painter.drawText(box.translated(shadow_offset, shadow_offset), TEXT_FLAGS, self.text)
-        painter.setPen(self.color)
-        painter.drawText(box, TEXT_FLAGS, self.text)
-        if self.is_editing:
-            caret_x = box.left() + metrics.horizontalAdvance(self.text) + 2
-            painter.setPen(QPen(self.color, max(1.0, self.width / 14)))
-            painter.drawLine(QPointF(caret_x, box.top()), QPointF(caret_x, box.bottom()))
-
-
-def force_foreground(window):
-    """Windows only lets the foreground app take focus; a synthetic Alt press lifts that lock."""
-    user32.keybd_event(VK_MENU, 0, 0, 0)
-    user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
-    user32.SetForegroundWindow(int(window.winId()))
-
-
-class Toolbar(QFrame):
-    def __init__(self, parent, overlay):
-        super().__init__(parent)
-        self.setObjectName("toolbar")
-        self.setStyleSheet(TOOLBAR_STYLE)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(2)
-
-        self.tool_buttons = {}
-        for kind, label, key in TOOLS:
-            hint = TOOL_HINTS.get(kind)
-            tooltip = f"{label} ({chr(key)})" + (f" - {hint}" if hint else "")
-            button = self.add_button(layout, glyph_icon(kind, ICON_SIZE), tooltip, checkable=True)
-            button.clicked.connect(lambda _checked, kind=kind: overlay.toggle_tool(kind))
-            self.tool_buttons[kind] = button
-        self.add_separator(layout)
-
-        self.color_buttons = []
-        for color in PALETTE:
-            button = self.add_button(
-                layout, swatch_icon(color, SWATCH_ICON_SIZE), "Color", checkable=True, name="swatch"
-            )
-            button.clicked.connect(lambda _checked, color=color: overlay.select_color(color))
-            self.color_buttons.append((color, button))
-        self.add_separator(layout)
-
-        self.size_buttons = []
-        for size in STROKE_SIZES:
-            button = self.add_button(
-                layout,
-                thickness_icon(size, ICON_SIZE),
-                "Thickness, text size and blur strength",
-                checkable=True,
-            )
-            button.clicked.connect(lambda _checked, size=size: overlay.select_size(size))
-            self.size_buttons.append((size, button))
-        self.add_separator(layout)
-
-        self.add_button(layout, glyph_icon("undo", ICON_SIZE), "Undo (Ctrl+Z)").clicked.connect(overlay.undo)
-        self.add_button(
-            layout, glyph_icon("save", ICON_SIZE), "Save to a file (Ctrl+S)"
-        ).clicked.connect(overlay.save)
-        copy_button = self.add_button(
-            layout, glyph_icon("copy", ICON_SIZE), "Copy to clipboard (Enter)", name="primary", text="Copy"
-        )
-        copy_button.clicked.connect(overlay.copy)
-        self.add_button(layout, glyph_icon("close", ICON_SIZE), "Close (Esc)").clicked.connect(overlay.cancel)
-        self.adjustSize()
-
-    def add_button(self, layout, icon, tooltip, checkable=False, name=None, text=""):
-        button = QToolButton()
-        button.setIcon(icon)
-        button.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
-        button.setToolTip(tooltip)
-        button.setCheckable(checkable)
-        button.setFocusPolicy(Qt.NoFocus)
-        button.setCursor(Qt.PointingHandCursor)
-        if name:
-            button.setObjectName(name)
-        if text:
-            button.setText(text)
-            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        layout.addWidget(button)
-        return button
-
-    def add_separator(self, layout):
-        line = QFrame()
-        line.setObjectName("separator")
-        line.setFixedHeight(22)
-        layout.addSpacing(5)
-        layout.addWidget(line)
-        layout.addSpacing(5)
-
-    def sync(self, tool, color, size):
-        for kind, button in self.tool_buttons.items():
-            button.setChecked(kind == tool)
-        for value, button in self.color_buttons:
-            button.setChecked(value == color)
-        for value, button in self.size_buttons:
-            button.setChecked(value == size)
 
 
 class Overlay(QWidget):
@@ -594,15 +233,19 @@ class Overlay(QWidget):
         horizontal = ""
         if inside_y:
             horizontal = (
-                "l" if abs(point.x() - rect.left()) <= margin
-                else "r" if abs(point.x() - rect.right()) <= margin
+                "l"
+                if abs(point.x() - rect.left()) <= margin
+                else "r"
+                if abs(point.x() - rect.right()) <= margin
                 else ""
             )
         vertical = ""
         if inside_x:
             vertical = (
-                "t" if abs(point.y() - rect.top()) <= margin
-                else "b" if abs(point.y() - rect.bottom()) <= margin
+                "t"
+                if abs(point.y() - rect.top()) <= margin
+                else "b"
+                if abs(point.y() - rect.bottom()) <= margin
                 else ""
             )
         if horizontal or vertical:
@@ -735,9 +378,6 @@ class Overlay(QWidget):
     def is_picking(self):
         return self.hover is not None and (self.drag is not None or not self.selection)
 
-    def is_ctrl_down(self):
-        return bool(user32.GetAsyncKeyState(VK_CONTROL) & KEY_DOWN_MASK)
-
     def keyReleaseEvent(self, _event):
         self.update()
 
@@ -803,7 +443,7 @@ class Overlay(QWidget):
             painter.fillRect(self.bounds, self.dim_color)
             self.paint_crosshair(painter)
             self.paint_hint(painter)
-        if self.is_picking() and self.is_ctrl_down():
+        if self.is_picking() and is_ctrl_down():
             self.paint_loupe(painter)
 
     def paint_selection(self, painter):
@@ -906,62 +546,3 @@ class Overlay(QWidget):
         pixel = QColor(self.source.pixel(point.x(), point.y()))
         label = f"{point.x()}, {point.y()}   {pixel.name().upper()}   Ctrl+C: copy"
         self.paint_pill(painter, label, x, y + size + 4 * self.ratio, above=False)
-
-
-class CaptureSession(QObject):
-    finished = Signal(object, str)
-    color_picked = Signal(object)
-    settings_requested = Signal()
-    cancelled = Signal()
-
-    def __init__(self, shots):
-        super().__init__()
-        self.overlays = [Overlay(shot, self.screen_for(shot), self) for shot in shots]
-
-    @staticmethod
-    def screen_for(shot):
-        size = (shot.image.width(), shot.image.height())
-        for screen in QGuiApplication.screens():
-            geometry = screen.geometry()
-            ratio = screen.devicePixelRatio()
-            if (round(geometry.width() * ratio), round(geometry.height() * ratio)) == size:
-                return screen
-        raise RuntimeError(f"No Qt screen matches captured monitor {size}")
-
-    def show(self):
-        for overlay in self.overlays:
-            overlay.show()
-        cursor = QCursor.pos()
-        under_cursor = next((o for o in self.overlays if o.geometry().contains(cursor)), self.overlays[0])
-        under_cursor.activate()
-
-    def open_settings(self):
-        self.settings_requested.emit()
-
-    def refocus(self):
-        cursor = QCursor.pos()
-        target = next((o for o in self.overlays if o.geometry().contains(cursor)), self.overlays[0])
-        target.refocus()
-
-    def claim(self, owner):
-        for overlay in self.overlays:
-            if overlay is not owner:
-                overlay.clear_selection()
-
-    def finish(self, owner, action):
-        image = owner.render_selection()
-        self.close_overlays()
-        self.finished.emit(image, action)
-
-    def pick_color(self, color):
-        self.close_overlays()
-        self.color_picked.emit(color)
-
-    def cancel(self):
-        self.close_overlays()
-        self.cancelled.emit()
-
-    def close_overlays(self):
-        for overlay in self.overlays:
-            overlay.close()
-            overlay.deleteLater()
