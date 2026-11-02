@@ -1,4 +1,8 @@
-# Luma
+<p align="center">
+  <img src="assets/icon.png" alt="Luma logo" width="112">
+</p>
+
+<h1 align="center">Luma</h1>
 
 **A fast, lightweight screenshot tool for Windows.** Press a key, drag over anything on any monitor, mark it up, and copy or save it. Luma lives in your system tray, starts with Windows, and gets out of the way.
 
@@ -23,9 +27,11 @@ If you are looking for a screenshot app that feels like Lightshot but is built f
 
 1. Download the latest `Luma-<version>-win64.zip` from the [Releases](../../releases) page.
 2. Extract it anywhere and run `Luma.exe`.
-3. Luma registers itself to start with Windows on first run. You can turn that off from the tray menu.
+3. Luma registers itself to start with Windows on first run. You can turn that off in Settings.
 
 Tested on Windows 11 (64-bit); Windows 10 is expected to work. No installer, no admin rights.
+
+The executable is not code-signed yet, so Windows SmartScreen may warn the first time. Choose **More info**, then **Run anyway**. The full source is in this repository if you prefer to build it yourself.
 
 ## Usage
 
