@@ -16,6 +16,7 @@ If you are looking for a screenshot app that feels like Lightshot but is built f
 - **Precise selection.** Move and resize the selection, nudge it with the arrow keys, or double-click to grab the whole monitor.
 - **Magnifier and color picker.** Hold `Ctrl` for a pixel-level loupe; press `Ctrl+C` to copy the color under the cursor as hex.
 - **Copy or save.** One key to put the image on the clipboard, or save it as a PNG.
+- **Make it yours.** A settings window for the capture shortcut, save folder, file name pattern, image format and quality, "ask where to save", editor defaults and more.
 - **Quiet tray app.** Starts with Windows, can be quit from the tray menu, and trims its own memory while idle.
 
 ## Install
@@ -38,11 +39,20 @@ Tested on Windows 11 (64-bit); Windows 10 is expected to work. No installer, no 
 | Copy the color under the cursor | `Ctrl+C` while the magnifier is showing |
 | Pen / Arrow / Marker / Box / Ellipse / Text / Redact | `P` / `A` / `M` / `B` / `O` / `T` / `R` |
 | Copy the image | `Enter` or `Ctrl+C` |
-| Save as PNG | `Ctrl+S` (saved to `Pictures\Luma`) |
+| Save to a file | `Ctrl+S` (to `Pictures\Luma` by default) |
 | Undo | `Ctrl+Z` |
-| Cancel | `Esc` or right-click |
+| Open the menu (settings, screenshots folder, cancel) | Right-click, or the **Settings** button at the top right |
+| Cancel | `Esc` |
 
-The tray icon opens a menu with **Capture**, **Open screenshots folder**, **Start with Windows** and **Quit**.
+The tray icon opens a menu with **Capture**, **Open screenshots folder**, **Settings** and **Quit**.
+
+## Settings
+
+Open them from the tray menu, the right-click menu, or the button at the top right while capturing. Every option applies as soon as you change it.
+
+- **General:** one or two capture shortcuts (Print Screen, letters, digits or F-keys, with Ctrl, Alt, Shift or Win), start with Windows, confirmation toast, help hint.
+- **Saving:** save folder (with a folder picker), file name pattern with date and time codes and a live preview, PNG, JPEG or WebP with adjustable quality, an optional "ask where to save every time" prompt, and an option to also save a file whenever you copy.
+- **Editor:** starting tool, annotation color and size, background dimming.
 
 ## Build from source
 
