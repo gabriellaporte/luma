@@ -4,6 +4,12 @@
 
 <h1 align="center">Luma</h1>
 
+<p align="center">
+  <a href="https://github.com/gabriellaporte/luma/actions/workflows/ci.yml"><img src="https://github.com/gabriellaporte/luma/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/gabriellaporte/luma/releases/latest"><img src="https://img.shields.io/github/v/release/gabriellaporte/luma" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/gabriellaporte/luma" alt="License"></a>
+</p>
+
 **A fast, lightweight screenshot tool for Windows.** Press a key, drag over anything on any monitor, mark it up, and copy or save it. Luma lives in your system tray, starts with Windows, and gets out of the way.
 
 If you are looking for a screenshot app that feels like Lightshot but is built for modern multi-monitor setups, this is it.
