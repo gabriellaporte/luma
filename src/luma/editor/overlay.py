@@ -11,6 +11,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetrics,
     QPainter,
     QPen,
     QPixmap,
@@ -34,7 +35,6 @@ LOUPE_CELL = 9
 LOUPE_OFFSET = 26
 LOUPE_LABEL_WIDTH = 360
 SELECTION_BAND = 14
-SELECTION_LABEL_BAND = 44
 IMMEDIATE_REPAINT_INTERVAL = 0.005
 HINT_TEXT = (
     "Drag to select   |   Double-click: whole screen   |   "
@@ -225,14 +225,19 @@ class Overlay(QWidget):
         return rects
 
     def outline_bands(self, rect):
+        """The frame, handles and size label of a selection: everything outside its own pixels."""
         side = round(SELECTION_BAND * self.ratio)
-        top = round(SELECTION_LABEL_BAND * self.ratio)
+        label = self.size_label_box(rect).toAlignedRect().adjusted(-2, -2, 2, 2)
         return [
-            QRect(rect.left() - side, rect.top() - top, rect.width() + 2 * side, top + side),
+            QRect(rect.left() - side, rect.top() - side, rect.width() + 2 * side, 2 * side),
             QRect(rect.left() - side, rect.bottom() - side, rect.width() + 2 * side, 2 * side),
             QRect(rect.left() - side, rect.top() - side, 2 * side, rect.height() + 2 * side),
             QRect(rect.right() - side, rect.top() - side, 2 * side, rect.height() + 2 * side),
+            label,
         ]
+
+    def size_label_box(self, rect):
+        return self.pill_box(f"{rect.width()} x {rect.height()}", rect.left(), rect.top(), above=True)
 
     def physical(self, position):
         return QPoint(
@@ -610,22 +615,29 @@ class Overlay(QWidget):
                 if (x, y) != (xs[1], ys[1]):
                     painter.drawRect(QRectF(x - size / 2, y - size / 2, size, size))
 
-    def paint_pill(self, painter, text, x, y, above):
-        """A dark rounded label; x=None centers it horizontally, above=True sits over y."""
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing)
+    def pill_font(self):
         font = QFont()
         font.setPixelSize(round(LABEL_FONT_PIXELS * self.ratio))
-        painter.setFont(font)
+        return font
+
+    def pill_box(self, text, x, y, above):
+        """Where a label sits: x=None centers it horizontally, above=True puts it over y."""
         padding = LABEL_PADDING * self.ratio
-        metrics = painter.fontMetrics()
+        metrics = QFontMetrics(self.pill_font())
         width = metrics.horizontalAdvance(text) + padding * 3
         height = metrics.height() + padding
         left = (self.bounds.width() - width) / 2 if x is None else x
         top = y - height - padding if above else y
         if top < 0:
             top = y + padding
-        box = QRectF(left, top, width, height)
+        return QRectF(left, top, width, height)
+
+    def paint_pill(self, painter, text, x, y, above):
+        """A dark rounded label."""
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setFont(self.pill_font())
+        box = self.pill_box(text, x, y, above)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(28, 28, 30, 235))
         painter.drawRoundedRect(box, 6 * self.ratio, 6 * self.ratio)
