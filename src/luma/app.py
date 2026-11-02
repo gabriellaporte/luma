@@ -17,7 +17,9 @@ from luma.capture.displays import enable_per_monitor_dpi
 from luma.editor.session import CaptureSession
 from luma.preferences import preferences
 from luma.system import autostart
+from luma.system.fullscreen import exclusive_fullscreen_active, release_cursor_clip
 from luma.system.hotkeys import HotkeyListener
+from luma.system.keyboard import is_foreground
 from luma.ui.settings_dialog import SettingsDialog
 from luma.ui.theme import MENU_STYLE
 from luma.ui.toast import Toast
@@ -26,6 +28,7 @@ ICON_PATH = Path(__file__).resolve().parent / "assets" / "icon.ico"
 LOG_PATH = Path(os.environ["LOCALAPPDATA"]) / APP_NAME / "app.log"
 ERROR_ALREADY_EXISTS = 183
 TRIM_DELAY_MS = 1500
+OVERLAY_CHECK_MS = 300
 COLOR_SWATCH_SIZE = (150, 96)
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -137,6 +140,10 @@ class App:
     def capture(self):
         if self.session is not None:
             return
+        if exclusive_fullscreen_active():
+            self.warn_exclusive_fullscreen()
+            return
+        release_cursor_clip()
         started = time.perf_counter()
         shots = self.capturer.snapshot()
         self.session = CaptureSession(shots)
@@ -146,6 +153,23 @@ class App:
         self.session.cancelled.connect(self.on_cancelled)
         self.session.show()
         log.info("overlay open in %.0f ms", (time.perf_counter() - started) * 1000)
+        QTimer.singleShot(OVERLAY_CHECK_MS, self.ensure_overlay_in_front)
+
+    def ensure_overlay_in_front(self):
+        """Another window (a game, usually) can win the focus race; take it back once and say so."""
+        if self.session is None or is_foreground(self.session.overlays[0]):
+            return
+        log.warning("overlay was not in front after %d ms; focusing again", OVERLAY_CHECK_MS)
+        self.session.refocus()
+
+    def warn_exclusive_fullscreen(self):
+        log.warning("capture skipped: a game is running in exclusive fullscreen")
+        self.tray.showMessage(
+            APP_NAME,
+            "A game in exclusive fullscreen blocks screenshots. "
+            "Switch it to windowed or borderless fullscreen.",
+            QSystemTrayIcon.MessageIcon.Warning,
+        )
 
     def on_finished(self, image, action):
         self.end_session()
