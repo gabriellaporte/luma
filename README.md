@@ -60,17 +60,35 @@ Open them from the tray menu, the right-click menu, or the button at the top rig
 - **Saving:** save folder (with a folder picker), file name pattern with date and time codes and a live preview, PNG, JPEG or WebP with adjustable quality, an optional "ask where to save every time" prompt, and an option to also save a file whenever you copy.
 - **Editor:** starting tool, annotation color and size, background dimming.
 
-## Build from source
+## Development
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-.venv\Scripts\python luma.py                 # run from source
-.venv\Scripts\python build.py                # build dist\Luma\Luma.exe
-.venv\Scripts\python build.py --install      # build, install for the current user, add a Start Menu shortcut
+.venv\Scripts\python -m pip install -e ".[dev]"
+
+.venv\Scripts\python -m luma                          # run from source
+.venv\Scripts\python -m pytest                        # tests
+.venv\Scripts\python -m ruff check . ; ruff format .   # lint and format
+.venv\Scripts\python packaging\build.py               # build dist\Luma\Luma.exe
+.venv\Scripts\python packaging\build.py --install     # build and install for the current user
 ```
 
-To change the icon, replace `assets/logo.png` and run `python tools/make_icons.py`.
+To change the icon, replace `src/luma/assets/logo.png` and run `python packaging/make_icons.py`.
+
+### Project layout
+
+```
+src/luma/
+  app.py          tray application and entry point
+  capture/        monitor discovery, DXGI duplication, HDR tone mapping
+  editor/         frozen overlay, selection, annotation tools, toolbar
+  ui/             icons, theme, toast, settings window
+  system/         global hotkeys, start with Windows, keyboard helpers
+  preferences.py  typed, persistent options
+  saving.py       file naming and image writing
+packaging/        PyInstaller build and icon generation
+tests/            pytest suite
+```
 
 ## How it works
 
