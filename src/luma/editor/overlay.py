@@ -19,13 +19,13 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QMenu, QToolButton, QWidget
 
 from luma.editor.annotations import Annotation
+from luma.editor.crosshair import CrosshairLines
 from luma.editor.diagnostics import InteractionStats
 from luma.editor.toolbar import Toolbar
 from luma.editor.tools import FREEHAND_TOOLS, TEXT_PIXELS, TOOLS
 from luma.preferences import preferences
 from luma.saving import open_save_folder
 from luma.system.keyboard import force_foreground, is_ctrl_down
-from luma.ui.cursors import crosshair_cursor
 from luma.ui.icons import glyph_icon
 from luma.ui.theme import MENU_STYLE
 
@@ -58,8 +58,6 @@ TOOLBAR_GAP = 8
 LABEL_PADDING = 6
 LABEL_FONT_PIXELS = 12
 SETTINGS_ICON_SIZE = 18
-CROSSHAIR = "crosshair"
-
 ARROW_KEY_DIRECTIONS = {
     Qt.Key_Left: QPoint(-1, 0),
     Qt.Key_Right: QPoint(1, 0),
@@ -91,9 +89,7 @@ class Overlay(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground)
         self.setAttribute(Qt.WA_OpaquePaintEvent)
         self.setMouseTracking(True)
-        self.crosshair = crosshair_cursor()
-        self.cursor_key = CROSSHAIR
-        self.setCursor(self.crosshair)
+        self.setCursor(Qt.CrossCursor)
         self.setScreen(screen)
         self.setGeometry(screen.geometry())
         self.ratio = self.source.width() / screen.geometry().width()
@@ -112,6 +108,7 @@ class Overlay(QWidget):
         self.current = None
         self.typing = None
         self.stats = InteractionStats()
+        self.lines = CrosshairLines(shot.monitor.rect, self.ratio)
         self.last_paint = 0.0
         self.snap_timer = QTimer(self)
         self.snap_timer.setSingleShot(True)
@@ -251,6 +248,7 @@ class Overlay(QWidget):
         self.raise_()
         self.activateWindow()
         force_foreground(self)
+        self.lines.raise_to_top()
         self.setFocus()
 
     def sync_toolbar(self):
@@ -262,7 +260,7 @@ class Overlay(QWidget):
         self.current = None
         self.typing = None
         self.toolbar.hide()
-        self.set_cursor_key(CROSSHAIR)
+        self.setCursor(Qt.CrossCursor)
         self.update()
 
     def select_all(self):
@@ -403,7 +401,18 @@ class Overlay(QWidget):
         elif self.selection:
             self.update_cursor(self.edges_at(point))
         self.invalidate(*dirty, *self.hover_dirty_rects(point))
+        self.move_crosshair(point)
         self.stats.handler_done(started)
+
+    def move_crosshair(self, point):
+        if self.selection is None and self.drag is None:
+            self.lines.follow(point)
+        else:
+            self.lines.hide()
+
+    def closeEvent(self, event):
+        self.lines.close()
+        super().closeEvent(event)
 
     def snap_current_stroke(self):
         if self.current is not None and self.current.snap_to_shape():
@@ -411,6 +420,7 @@ class Overlay(QWidget):
 
     def leaveEvent(self, _event):
         self.hover = None
+        self.lines.hide()
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -462,18 +472,13 @@ class Overlay(QWidget):
 
     def update_cursor(self, target):
         if target == "move":
-            key = CROSSHAIR if self.tool else Qt.SizeAllCursor
+            shape = Qt.CrossCursor if self.tool else Qt.SizeAllCursor
         elif target:
-            key = CURSOR_BY_EDGES[target]
+            shape = CURSOR_BY_EDGES[target]
         else:
-            key = CROSSHAIR
-        self.set_cursor_key(key)
-
-    def set_cursor_key(self, key):
-        if key == self.cursor_key:
-            return
-        self.cursor_key = key
-        self.setCursor(self.crosshair if key == CROSSHAIR else key)
+            shape = Qt.CrossCursor
+        if shape != self.cursor().shape():
+            self.setCursor(shape)
 
     def place_toolbar(self):
         rect = QRectF(self.selection)
