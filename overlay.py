@@ -19,7 +19,6 @@ from PySide6.QtGui import (
     QCursor,
     QFont,
     QGuiApplication,
-    QIcon,
     QPainter,
     QPainterPath,
     QPen,
@@ -28,6 +27,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QToolButton, QWidget
 
+from icons import glyph_icon, swatch_icon, thickness_icon
 from preferences import preferences
 from saving import open_save_folder
 from theme import MENU_STYLE
@@ -87,19 +87,23 @@ MIN_SELECTION_SIZE = 4
 TOOLBAR_GAP = 8
 LABEL_PADDING = 6
 LABEL_FONT_PIXELS = 12
-ICON_SIZE = 28
-SWATCH_SIZE = 18
+ICON_SIZE = 22
+SWATCH_ICON_SIZE = 24
+SETTINGS_ICON_SIZE = 18
 
 TOOLBAR_STYLE = """
-#toolbar { background: rgba(28, 28, 30, 240); border: 1px solid rgba(255, 255, 255, 38);
-           border-radius: 12px; }
-#toolbar QToolButton { color: white; border: none; border-radius: 8px; padding: 4px 8px;
-                       font-size: 12px; }
-#toolbar QToolButton:hover { background: rgba(255, 255, 255, 36); }
-#toolbar QToolButton:checked { background: rgba(10, 132, 255, 215); }
-#toolbar QToolButton#primary { background: #0a84ff; font-weight: 600; padding: 4px 14px; }
+#toolbar { background: rgba(32, 32, 36, 244); border: 1px solid rgba(255, 255, 255, 30);
+           border-radius: 14px; }
+#toolbar QToolButton { color: #f5f5f7; border: none; border-radius: 9px; padding: 6px;
+                       font-size: 12px; font-weight: 600; }
+#toolbar QToolButton:hover { background: rgba(255, 255, 255, 30); }
+#toolbar QToolButton:checked { background: rgba(10, 132, 255, 230); }
+#toolbar QToolButton#swatch { border: 2px solid transparent; border-radius: 15px; padding: 3px; }
+#toolbar QToolButton#swatch:hover { background: transparent; border-color: rgba(255, 255, 255, 90); }
+#toolbar QToolButton#swatch:checked { background: transparent; border-color: white; }
+#toolbar QToolButton#primary { background: #0a84ff; padding: 6px 14px 6px 10px; }
 #toolbar QToolButton#primary:hover { background: #3b9bff; }
-#toolbar QFrame#separator { background: rgba(255, 255, 255, 46); max-width: 1px; min-width: 1px; }
+#toolbar QFrame#separator { background: rgba(255, 255, 255, 40); max-width: 1px; min-width: 1px; }
 """
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -335,78 +339,6 @@ class Annotation:
             painter.drawLine(QPointF(caret_x, box.top()), QPointF(caret_x, box.bottom()))
 
 
-def tool_icon(kind):
-    pixmap = QPixmap(ICON_SIZE, ICON_SIZE)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    pen = QPen(QColor("white"), 2.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-    painter.setPen(pen)
-    if kind == "arrow":
-        painter.drawLine(7, 21, 20, 8)
-        painter.setBrush(QColor("white"))
-        painter.drawPolygon(QPolygonF([QPointF(22, 6), QPointF(14, 8), QPointF(20, 14)]))
-    elif kind == "pen":
-        path = QPainterPath(QPointF(5, 20))
-        path.cubicTo(10, 4, 15, 26, 23, 8)
-        painter.drawPath(path)
-    elif kind == "marker":
-        highlight = QColor("white")
-        highlight.setAlpha(150)
-        painter.setPen(QPen(highlight, 9, Qt.SolidLine, Qt.FlatCap))
-        painter.drawLine(7, 19, 21, 9)
-    elif kind == "box":
-        painter.drawRect(6, 8, 16, 12)
-    elif kind == "ellipse":
-        painter.drawEllipse(6, 6, 16, 16)
-    elif kind == "text":
-        font = QFont()
-        font.setPixelSize(20)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(QRectF(0, 0, ICON_SIZE, ICON_SIZE), Qt.AlignCenter, "T")
-    elif kind == "redact":
-        painter.setPen(Qt.NoPen)
-        for row in range(3):
-            for column in range(3):
-                shade = QColor("white")
-                shade.setAlpha(230 if (row + column) % 2 == 0 else 90)
-                painter.setBrush(shade)
-                painter.drawRect(6 + column * 6, 6 + row * 6, 6, 6)
-    painter.end()
-    return QIcon(pixmap)
-
-
-def dot_icon(color, diameter):
-    pixmap = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
-    painter.setBrush(QColor(color))
-    offset = (SWATCH_SIZE - diameter) / 2
-    painter.drawEllipse(QRectF(offset, offset, diameter, diameter))
-    painter.end()
-    return QIcon(pixmap)
-
-
-def gear_icon():
-    pixmap = QPixmap(SWATCH_SIZE, SWATCH_SIZE)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    center = SWATCH_SIZE / 2
-    painter.translate(center, center)
-    painter.setPen(QPen(QColor("white"), 2.2, Qt.SolidLine, Qt.RoundCap))
-    for _tooth in range(8):
-        painter.drawLine(QPointF(0, -center + 1.2), QPointF(0, -center + 3.6))
-        painter.rotate(45)
-    painter.setBrush(Qt.NoBrush)
-    painter.drawEllipse(QPointF(0, 0), center - 5, center - 5)
-    painter.end()
-    return QIcon(pixmap)
-
-
 def force_foreground(window):
     """Windows only lets the foreground app take focus; a synthetic Alt press lifts that lock."""
     user32.keybd_event(VK_MENU, 0, 0, 0)
@@ -421,61 +353,72 @@ class Toolbar(QFrame):
         self.setStyleSheet(TOOLBAR_STYLE)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(4)
+        layout.setSpacing(2)
 
         self.tool_buttons = {}
         for kind, label, key in TOOLS:
             hint = TOOL_HINTS.get(kind)
             tooltip = f"{label} ({chr(key)})" + (f" - {hint}" if hint else "")
-            button = self.add_button(layout, tooltip, checkable=True, icon=tool_icon(kind))
+            button = self.add_button(layout, glyph_icon(kind, ICON_SIZE), tooltip, checkable=True)
             button.clicked.connect(lambda _checked, kind=kind: overlay.toggle_tool(kind))
             self.tool_buttons[kind] = button
-        layout.addWidget(self.separator())
+        self.add_separator(layout)
 
         self.color_buttons = []
         for color in PALETTE:
-            button = self.add_button(layout, "", checkable=True, icon=dot_icon(color, SWATCH_SIZE - 4), tooltip="Color")
+            button = self.add_button(
+                layout, swatch_icon(color, SWATCH_ICON_SIZE), "Color", checkable=True, name="swatch"
+            )
             button.clicked.connect(lambda _checked, color=color: overlay.select_color(color))
             self.color_buttons.append((color, button))
-        layout.addWidget(self.separator())
+        self.add_separator(layout)
 
         self.size_buttons = []
         for size in STROKE_SIZES:
-            button = self.add_button(layout, "", checkable=True, icon=dot_icon("#ffffff", size + 4), tooltip="Thickness / text size / blur strength")
+            button = self.add_button(
+                layout,
+                thickness_icon(size, ICON_SIZE),
+                "Thickness, text size and blur strength",
+                checkable=True,
+            )
             button.clicked.connect(lambda _checked, size=size: overlay.select_size(size))
             self.size_buttons.append((size, button))
-        layout.addWidget(self.separator())
+        self.add_separator(layout)
 
-        for label, action, tooltip in [
-            ("Undo", overlay.undo, "Undo (Ctrl+Z)"),
-            ("Save", overlay.save, "Save to Pictures\\Luma (Ctrl+S)"),
-        ]:
-            self.add_button(layout, label, tooltip=tooltip).clicked.connect(action)
-        copy_button = self.add_button(layout, "Copy", tooltip="Copy to clipboard (Enter)")
-        copy_button.setObjectName("primary")
+        self.add_button(layout, glyph_icon("undo", ICON_SIZE), "Undo (Ctrl+Z)").clicked.connect(overlay.undo)
+        self.add_button(
+            layout, glyph_icon("save", ICON_SIZE), "Save to a file (Ctrl+S)"
+        ).clicked.connect(overlay.save)
+        copy_button = self.add_button(
+            layout, glyph_icon("copy", ICON_SIZE), "Copy to clipboard (Enter)", name="primary", text="Copy"
+        )
         copy_button.clicked.connect(overlay.copy)
-        self.add_button(layout, "Close", tooltip="Close (Esc)").clicked.connect(overlay.cancel)
+        self.add_button(layout, glyph_icon("close", ICON_SIZE), "Close (Esc)").clicked.connect(overlay.cancel)
         self.adjustSize()
 
-    def add_button(self, layout, text, checkable=False, icon=None, tooltip=None):
+    def add_button(self, layout, icon, tooltip, checkable=False, name=None, text=""):
         button = QToolButton()
-        button.setText(text)
+        button.setIcon(icon)
+        button.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        button.setToolTip(tooltip)
         button.setCheckable(checkable)
-        button.setToolTip(tooltip or text)
         button.setFocusPolicy(Qt.NoFocus)
         button.setCursor(Qt.PointingHandCursor)
-        if icon is not None:
-            button.setIcon(icon)
-            button.setIconSize(QSize(ICON_SIZE, ICON_SIZE) if text else QSize(SWATCH_SIZE, SWATCH_SIZE))
-            button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        if name:
+            button.setObjectName(name)
+        if text:
+            button.setText(text)
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         layout.addWidget(button)
         return button
 
-    def separator(self):
+    def add_separator(self, layout):
         line = QFrame()
         line.setObjectName("separator")
         line.setFixedHeight(22)
-        return line
+        layout.addSpacing(5)
+        layout.addWidget(line)
+        layout.addSpacing(5)
 
     def sync(self, tool, color, size):
         for kind, button in self.tool_buttons.items():
@@ -527,8 +470,8 @@ class Overlay(QWidget):
     def build_settings_button(self):
         button = QToolButton(self)
         button.setText("Settings")
-        button.setIcon(gear_icon())
-        button.setIconSize(QSize(SWATCH_SIZE, SWATCH_SIZE))
+        button.setIcon(glyph_icon("gear", SETTINGS_ICON_SIZE))
+        button.setIconSize(QSize(SETTINGS_ICON_SIZE, SETTINGS_ICON_SIZE))
         button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         button.setStyleSheet(SETTINGS_BUTTON_STYLE)
         button.setFocusPolicy(Qt.NoFocus)

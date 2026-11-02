@@ -3,7 +3,7 @@ import logging
 import threading
 from ctypes import wintypes
 
-from PySide6.QtCore import QKeyCombination, QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QKeySequence
 
 from preferences import preferences

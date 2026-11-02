@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (
 import autostart
 from hotkeys import to_windows_hotkey
 from identity import APP_NAME, __version__
-from overlay import PALETTE, STROKE_SIZES, TOOLS, dot_icon
+from icons import swatch_icon
+from overlay import PALETTE, STROKE_SIZES, TOOLS
 from preferences import preferences
 from saving import IMAGE_FORMATS, LOSSY_FORMATS, file_stem, open_save_folder
 from theme import dialog_style
@@ -220,7 +221,8 @@ class SettingsDialog(QDialog):
             button = QToolButton()
             button.setCheckable(True)
             button.setChecked(color == preferences.pen_color)
-            button.setIcon(dot_icon(color, 18))
+            button.setIcon(swatch_icon(color, 22))
+            button.setIconSize(QSize(22, 22))
             button.clicked.connect(lambda _checked, color=color: setattr(preferences, "pen_color", color))
             group.addButton(button)
             swatches.addWidget(button)
