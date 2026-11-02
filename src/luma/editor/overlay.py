@@ -12,6 +12,7 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
+    QRegion,
 )
 from PySide6.QtWidgets import QMenu, QToolButton, QWidget
 
@@ -27,6 +28,9 @@ from luma.ui.theme import MENU_STYLE
 LOUPE_PIXELS = 15
 LOUPE_CELL = 9
 LOUPE_OFFSET = 26
+LOUPE_LABEL_WIDTH = 360
+SELECTION_BAND = 14
+SELECTION_LABEL_BAND = 44
 CROSSHAIR_COLOR = QColor(255, 255, 255, 90)
 HINT_TEXT = (
     "Drag to select   |   Double-click: whole screen   |   "
@@ -90,6 +94,8 @@ class Overlay(QWidget):
         self.stroke_size = preferences.pen_size
         self.tool = preferences.default_tool or None
         self.dim_color = QColor(0, 0, 0, round(255 * preferences.dim_percent / 100))
+        self.pixmap.setDevicePixelRatio(self.ratio)
+        self.dimmed = self.build_dimmed_pixmap()
         self.selection = None
         self.drag = None
         self.hover = None
@@ -133,6 +139,89 @@ class Overlay(QWidget):
         menu.addSeparator()
         menu.addAction("Cancel capture", self.cancel)
         menu.exec(global_position)
+
+    def build_dimmed_pixmap(self):
+        """The darkened screen is built once, so painting never has to alpha-blend the full frame."""
+        dimmed = QPixmap(self.pixmap)
+        painter = QPainter(dimmed)
+        painter.fillRect(dimmed.rect(), self.dim_color)
+        painter.end()
+        return dimmed
+
+    def widget_rect(self, rect):
+        """A physical-pixel rectangle as the aligned widget rectangle that covers it."""
+        scaled = QRectF(
+            rect.x() / self.ratio,
+            rect.y() / self.ratio,
+            rect.width() / self.ratio,
+            rect.height() / self.ratio,
+        )
+        return scaled.toAlignedRect().adjusted(-1, -1, 1, 1)
+
+    def invalidate(self, *rects):
+        """Repaint only these physical-pixel rectangles instead of the whole screen."""
+        for rect in rects:
+            self.update(self.widget_rect(rect))
+
+    def crosshair_rects(self, point):
+        half = round(self.ratio) + 1
+        return [
+            QRect(0, point.y() - half, self.bounds.width(), 2 * half + 1),
+            QRect(point.x() - half, 0, 2 * half + 1, self.bounds.height()),
+        ]
+
+    def loupe_geometry(self, point):
+        cell = LOUPE_CELL * self.ratio
+        size = cell * LOUPE_PIXELS
+        offset = LOUPE_OFFSET * self.ratio
+        info_height = 30 * self.ratio
+        x = point.x() + offset
+        if x + size > self.bounds.width():
+            x = point.x() - offset - size
+        y = point.y() + offset
+        if y + size + info_height > self.bounds.height():
+            y = point.y() - offset - size - info_height
+        return QRectF(x, y, size, size), info_height
+
+    def loupe_rect(self, point):
+        target, info_height = self.loupe_geometry(point)
+        margin = 6 * self.ratio
+        return QRectF(
+            target.x() - margin,
+            target.y() - margin,
+            max(target.width(), LOUPE_LABEL_WIDTH * self.ratio) + 2 * margin,
+            target.height() + info_height + 4 * margin,
+        ).toAlignedRect()
+
+    def hover_dirty_rects(self, point):
+        if point is None:
+            return []
+        rects = [] if self.selection else self.crosshair_rects(point)
+        if is_ctrl_down():
+            rects.append(self.loupe_rect(point))
+        return rects
+
+    def selection_dirty_rects(self, old, new):
+        """What a selection change touches: both outlines with their labels, and the area that flipped."""
+        rects = []
+        for rect in (old, new):
+            if rect:
+                rects += self.outline_bands(rect)
+        if old and new:
+            rects += list(QRegion(old).xored(QRegion(new)))
+        elif old or new:
+            rects.append(old or new)
+        return rects
+
+    def outline_bands(self, rect):
+        side = round(SELECTION_BAND * self.ratio)
+        top = round(SELECTION_LABEL_BAND * self.ratio)
+        return [
+            QRect(rect.left() - side, rect.top() - top, rect.width() + 2 * side, top + side),
+            QRect(rect.left() - side, rect.bottom() - side, rect.width() + 2 * side, 2 * side),
+            QRect(rect.left() - side, rect.top() - side, 2 * side, rect.height() + 2 * side),
+            QRect(rect.right() - side, rect.top() - side, 2 * side, rect.height() + 2 * side),
+        ]
 
     def physical(self, position):
         return QPoint(
@@ -282,17 +371,22 @@ class Overlay(QWidget):
 
     def mouseMoveEvent(self, event):
         point = self.physical(event.position())
+        dirty = self.hover_dirty_rects(self.hover)
         self.hover = point
         if self.current is not None:
             if not self.current.is_snapped:
+                dirty.append(self.current.bounds())
                 self.current.extend(self.clamped_to_selection(point))
+                dirty.append(self.current.bounds())
                 if self.current.kind in FREEHAND_TOOLS:
                     self.snap_timer.start()
         elif self.drag is not None:
+            previous = self.selection
             self.update_drag(point)
+            dirty += self.selection_dirty_rects(previous, self.selection)
         elif self.selection:
             self.update_cursor(self.edges_at(point))
-        self.update()
+        self.invalidate(*dirty, *self.hover_dirty_rects(point))
 
     def snap_current_stroke(self):
         if self.current is not None and self.current.snap_to_shape():
@@ -435,29 +529,31 @@ class Overlay(QWidget):
 
     def paintEvent(self, _event):
         painter = QPainter(self)
+        painter.drawPixmap(0, 0, self.dimmed)
+        if self.selection:
+            self.paint_bright_selection(painter)
         painter.scale(1 / self.ratio, 1 / self.ratio)
-        painter.drawPixmap(0, 0, self.pixmap)
         if self.selection:
             self.paint_selection(painter)
         else:
-            painter.fillRect(self.bounds, self.dim_color)
             self.paint_crosshair(painter)
             self.paint_hint(painter)
         if self.is_picking() and is_ctrl_down():
             self.paint_loupe(painter)
 
-    def paint_selection(self, painter):
-        rect, bounds = self.selection, self.bounds
-        for region in [
-            QRect(0, 0, bounds.width(), rect.top()),
-            QRect(0, rect.bottom() + 1, bounds.width(), bounds.height() - rect.bottom() - 1),
-            QRect(0, rect.top(), rect.left(), rect.height()),
-            QRect(rect.right() + 1, rect.top(), bounds.width() - rect.right() - 1, rect.height()),
-        ]:
-            painter.fillRect(region, self.dim_color)
-
+    def paint_bright_selection(self, painter):
+        """Show the undimmed screen inside the selection, with a native 1:1 pixel copy."""
         painter.save()
-        painter.setClipRect(rect)
+        painter.scale(1 / self.ratio, 1 / self.ratio)
+        painter.setClipRect(self.selection, Qt.IntersectClip)
+        painter.resetTransform()
+        painter.drawPixmap(0, 0, self.pixmap)
+        painter.restore()
+
+    def paint_selection(self, painter):
+        rect = self.selection
+        painter.save()
+        painter.setClipRect(rect, Qt.IntersectClip)
         for annotation in self.annotations + [a for a in (self.current, self.typing) if a]:
             annotation.paint(painter)
         painter.restore()
@@ -515,18 +611,9 @@ class Overlay(QWidget):
         painter.restore()
 
     def paint_loupe(self, painter):
-        cell = LOUPE_CELL * self.ratio
-        size = cell * LOUPE_PIXELS
-        offset = LOUPE_OFFSET * self.ratio
-        info_height = 30 * self.ratio
         point = self.hover
-        x = point.x() + offset
-        if x + size > self.bounds.width():
-            x = point.x() - offset - size
-        y = point.y() + offset
-        if y + size + info_height > self.bounds.height():
-            y = point.y() - offset - size - info_height
-        target = QRectF(x, y, size, size)
+        target, _info_height = self.loupe_geometry(point)
+        cell = target.width() / LOUPE_PIXELS
         half = LOUPE_PIXELS // 2
         source = QRectF(point.x() - half, point.y() - half, LOUPE_PIXELS, LOUPE_PIXELS)
 
@@ -536,7 +623,7 @@ class Overlay(QWidget):
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(ACCENT, 2 * self.ratio))
         painter.drawRect(target)
-        center = QRectF(x + half * cell, y + half * cell, cell, cell)
+        center = QRectF(target.x() + half * cell, target.y() + half * cell, cell, cell)
         painter.setPen(QPen(QColor("white"), max(1.0, self.ratio)))
         painter.drawRect(center)
         painter.setPen(QPen(QColor("black"), max(1.0, self.ratio)))
@@ -545,4 +632,4 @@ class Overlay(QWidget):
 
         pixel = QColor(self.source.pixel(point.x(), point.y()))
         label = f"{point.x()}, {point.y()}   {pixel.name().upper()}   Ctrl+C: copy"
-        self.paint_pill(painter, label, x, y + size + 4 * self.ratio, above=False)
+        self.paint_pill(painter, label, target.x(), target.bottom() + 4 * self.ratio, above=False)

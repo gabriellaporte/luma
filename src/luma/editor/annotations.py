@@ -21,6 +21,8 @@ TEXT_FLAGS = (
 TEXT_SHADOW = QColor(0, 0, 0, 150)
 MARKER_WIDTH_FACTOR = 4
 MARKER_ALPHA = 110
+TEXT_WIDTH_FACTOR = 0.8
+TEXT_HEIGHT_FACTOR = 1.8
 
 
 class Annotation:
@@ -33,6 +35,20 @@ class Annotation:
         self.text = ""
         self.is_editing = False
         self.is_snapped = False
+
+    def bounds(self):
+        """Generous bounding box of everything this annotation can paint, in physical pixels."""
+        if self.kind == "text":
+            width = self.width * TEXT_WIDTH_FACTOR * (len(self.text) + 2)
+            return QRectF(
+                self.points[0].x(), self.points[0].y(), width, self.width * TEXT_HEIGHT_FACTOR
+            ).adjusted(-4, -4, 4, 4)
+        xs = [point.x() for point in self.points]
+        ys = [point.y() for point in self.points]
+        margin = self.width * MARKER_WIDTH_FACTOR + 8
+        return QRectF(QPointF(min(xs), min(ys)), QPointF(max(xs), max(ys))).adjusted(
+            -margin, -margin, margin, margin
+        )
 
     def finish_stroke(self):
         if not self.is_snapped:
