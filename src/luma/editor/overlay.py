@@ -17,6 +17,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QMenu, QToolButton, QWidget
 
 from luma.editor.annotations import Annotation
+from luma.editor.diagnostics import InteractionStats
 from luma.editor.toolbar import Toolbar
 from luma.editor.tools import FREEHAND_TOOLS, TEXT_PIXELS, TOOLS
 from luma.preferences import preferences
@@ -103,6 +104,7 @@ class Overlay(QWidget):
         self.annotations = []
         self.current = None
         self.typing = None
+        self.stats = InteractionStats()
         self.snap_timer = QTimer(self)
         self.snap_timer.setSingleShot(True)
         self.snap_timer.setInterval(SNAP_HOLD_MS)
@@ -357,6 +359,7 @@ class Overlay(QWidget):
         elif target == "move" and self.tool:
             self.current = self.new_annotation(point)
         elif target:
+            self.toolbar.hide()
             self.drag = (target, point, QRect(self.selection))
         else:
             self.session.claim(self)
@@ -370,6 +373,7 @@ class Overlay(QWidget):
             self.select_all()
 
     def mouseMoveEvent(self, event):
+        started = self.stats.mouse_moved()
         point = self.physical(event.position())
         dirty = self.hover_dirty_rects(self.hover)
         self.hover = point
@@ -387,6 +391,7 @@ class Overlay(QWidget):
         elif self.selection:
             self.update_cursor(self.edges_at(point))
         self.invalidate(*dirty, *self.hover_dirty_rects(point))
+        self.stats.handler_done(started)
 
     def snap_current_stroke(self):
         if self.current is not None and self.current.snap_to_shape():
@@ -442,16 +447,16 @@ class Overlay(QWidget):
             if "b" in mode:
                 rect.setBottom(point.y())
         self.selection = rect.normalized().intersected(self.bounds)
-        if mode != "create":
-            self.place_toolbar()
 
     def update_cursor(self, target):
         if target == "move":
-            self.setCursor(Qt.CrossCursor if self.tool else Qt.SizeAllCursor)
+            shape = Qt.CrossCursor if self.tool else Qt.SizeAllCursor
         elif target:
-            self.setCursor(CURSOR_BY_EDGES[target])
+            shape = CURSOR_BY_EDGES[target]
         else:
-            self.setCursor(Qt.CrossCursor)
+            shape = Qt.CrossCursor
+        if shape != self.cursor().shape():
+            self.setCursor(shape)
 
     def place_toolbar(self):
         rect = QRectF(self.selection)
@@ -528,6 +533,7 @@ class Overlay(QWidget):
         self.update()
 
     def paintEvent(self, _event):
+        started = self.stats.paint_started()
         painter = QPainter(self)
         painter.drawPixmap(0, 0, self.dimmed)
         if self.selection:
@@ -540,6 +546,8 @@ class Overlay(QWidget):
             self.paint_hint(painter)
         if self.is_picking() and is_ctrl_down():
             self.paint_loupe(painter)
+        painter.end()
+        self.stats.painted(started)
 
     def paint_bright_selection(self, painter):
         """Show the undimmed screen inside the selection, with a native 1:1 pixel copy."""

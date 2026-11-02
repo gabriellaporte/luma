@@ -1,3 +1,5 @@
+import logging
+
 from PySide6.QtCore import (
     QObject,
     Signal,
@@ -8,6 +10,8 @@ from PySide6.QtGui import (
 )
 
 from luma.editor.overlay import Overlay
+
+log = logging.getLogger("luma")
 
 
 class CaptureSession(QObject):
@@ -65,5 +69,12 @@ class CaptureSession(QObject):
 
     def close_overlays(self):
         for overlay in self.overlays:
+            if overlay.stats.has_data():
+                log.info(
+                    "overlay %dx%d: %s",
+                    overlay.bounds.width(),
+                    overlay.bounds.height(),
+                    overlay.stats.summary(),
+                )
             overlay.close()
             overlay.deleteLater()
