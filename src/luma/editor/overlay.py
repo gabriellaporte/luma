@@ -410,7 +410,7 @@ class Overlay(QWidget):
         self.stats.handler_done(started)
 
     def move_crosshair(self, point):
-        if self.selection is None and self.drag is None:
+        if self.isVisible() and self.selection is None and self.drag is None:
             self.lines.follow(point)
         else:
             self.lines.hide()
